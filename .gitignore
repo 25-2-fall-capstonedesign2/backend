@@ -9,6 +9,11 @@ build/
 .apt_generated
 .classpath
 .factorypath
+# Cache of project
+.gradletasknamecache
+
+# Eclipse Gradle plugin generated files
+# Eclipse Core
 .project
 .settings
 .springBeans
