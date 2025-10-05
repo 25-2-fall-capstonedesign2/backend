@@ -48,4 +48,4 @@ jobs:
       # ./gradlew build 명령을 실행하여 프로젝트를 빌드하고 테스트를 실행합니다.
       # 이 단계가 성공적으로 끝나면 코드가 문제없이 컴파일되고 모든 테스트를 통과했다는 의미입니다.
       - name: Build with Gradle
-        run: ./gradlew build --info
+        run: ./gradlew build
