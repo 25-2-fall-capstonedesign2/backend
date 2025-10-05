@@ -14,6 +14,14 @@ java {
     }
 }
 
+// gradle daemon is forced to use JDK25
+gradle.projectsEvaluated {
+    tasks.withType(JavaCompile) {
+        options.fork = true
+        options.forkOptions.executable = org.gradle.internal.jvm.Jvm.current().javaExecutable.absolutePath
+    }
+}
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
