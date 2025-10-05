@@ -12,8 +12,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
 import java.util.Collections;
+import com.capstone.backend.dto.MessageBoxDto; // 추가
+import com.capstone.backend.dto.SignupRequestDto; // 추가
+import org.springframework.security.core.annotation.AuthenticationPrincipal; // 추가
+import org.springframework.security.core.userdetails.UserDetails; // 추가
+import org.springframework.web.bind.annotation.DeleteMapping; // 추가
 
 @RestController
 @RequestMapping("/api/auth")
@@ -45,5 +49,25 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Collections.singletonMap("message", "전화번호 또는 비밀번호가 올바르지 않습니다."));
         }
+    }
+
+    @PostMapping("/signup")
+    public ResponseEntity<MessageBoxDto> signup(@RequestBody SignupRequestDto signupRequestDto) {
+        try {
+            authService.signup(signupRequestDto);
+            return ResponseEntity.ok(new MessageBoxDto("회원가입이 완료되었습니다."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageBoxDto(e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/withdraw")
+    public ResponseEntity<MessageBoxDto> withdraw(@AuthenticationPrincipal UserDetails userDetails) {
+        // @AuthenticationPrincipal 어노테이션을 통해 현재 로그인한 사용자의 정보를 가져옴
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageBoxDto("인증된 사용자가 아닙니다."));
+        }
+        authService.withdraw(userDetails.getUsername());
+        return ResponseEntity.ok(new MessageBoxDto("회원탈퇴가 성공적으로 처리되었습니다."));
     }
 }

@@ -8,6 +8,8 @@ import com.capstone.backend.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import com.capstone.backend.dto.SignupRequestDto;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -30,5 +32,27 @@ public class AuthService {
         // 3. JWT 토큰 생성 [cite: 115]
         String token = jwtUtil.generateToken(user.getPhoneNumber());
         return new TokenDto(token);
+    }
+
+    @Transactional
+    public void signup(SignupRequestDto signupRequestDto) {
+        // 전화번호 중복 확인
+        if (userRepository.findByPhoneNumber(signupRequestDto.getPhone()).isPresent()) {
+            throw new IllegalArgumentException("이미 사용 중인 전화번호입니다.");
+        }
+
+        // 사용자 정보 생성 및 저장
+        User user = new User();
+        user.setPhoneNumber(signupRequestDto.getPhone());
+        user.setPassword(passwordEncoder.encode(signupRequestDto.getPassword()));
+        user.setDisplayName(signupRequestDto.getDisplayName());
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void withdraw(String phoneNumber) {
+        User user = userRepository.findByPhoneNumber(phoneNumber)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+        userRepository.delete(user);
     }
 }
