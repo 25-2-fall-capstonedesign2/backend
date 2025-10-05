@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.Collections;
+import jakarta.validation.Valid; // 추가
 import com.capstone.backend.dto.MessageBoxDto; // 추가
 import com.capstone.backend.dto.SignupRequestDto; // 추가
 import org.springframework.security.core.annotation.AuthenticationPrincipal; // 추가
@@ -52,7 +53,7 @@ public class AuthController {
     }
 
     @PostMapping("/signup")
-    public ResponseEntity<MessageBoxDto> signup(@RequestBody SignupRequestDto signupRequestDto) {
+    public ResponseEntity<MessageBoxDto> signup(@Valid @RequestBody SignupRequestDto signupRequestDto) {
         try {
             authService.signup(signupRequestDto);
             return ResponseEntity.ok(new MessageBoxDto("회원가입이 완료되었습니다."));

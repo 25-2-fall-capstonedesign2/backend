@@ -46,6 +46,7 @@ dependencies {
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0' // Swagger UI 추가
     implementation 'org.springframework.boot:spring-boot-starter-websocket' // WebSocket 의존성 추가
     testImplementation 'com.h2database:h2' // test에서는 H2 in-line db 사용
+    implementation 'org.springframework.boot:spring-boot-starter-validation' // 데이터 첫 입력 시 유효성 검사
 }
 
 tasks.named('test') {
