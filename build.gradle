@@ -10,7 +10,7 @@ description = 'backend'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -37,6 +37,11 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
+    // JWT 라이브러리 추가
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
+
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa' // JPA 추가(SQL쿼리 대신 객체지향)
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0' // Swagger UI 추가
     implementation 'org.springframework.boot:spring-boot-starter-websocket' // WebSocket 의존성 추가
@@ -45,4 +50,11 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+
+    // 테스트 로그
+    testLogging {
+        events "passed", "skipped", "failed" // 성공, 스킵, 실패 이벤트를 모두 보여줌
+        exceptionFormat "full" // 예외 발생 시 전체 스택 트레이스를 보여줌
+        showStandardStreams = true // System.out, System.err 출력을 보여줌
+    }
 }
