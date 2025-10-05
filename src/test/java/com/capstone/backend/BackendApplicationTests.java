@@ -1,15 +1,16 @@
 package com.capstone.backend;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-
+import com.capstone.backend.dto.SignupRequestDto;
 import com.capstone.backend.entity.User;
 import com.capstone.backend.repository.UserRepository;
+import com.capstone.backend.util.JwtUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -17,7 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -39,6 +43,11 @@ class BackendApplicationTests {
     // Java 객체를 JSON 문자열로, 또는 그 반대로 변환해주는 도구
     @Autowired
     private ObjectMapper objectMapper;
+
+    // JWT 생성을 위해 추가
+    @Autowired
+    private JwtUtil jwtUtil;
+
 
     /**
      * 각 테스트가 실행되기 전에 항상 먼저 실행되는 메소드.
@@ -93,6 +102,96 @@ class BackendApplicationTests {
                         .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isUnauthorized()) // 1. HTTP 응답 코드가 401 (Unauthorized)인지 확인
                 .andExpect(jsonPath("$.message").value("전화번호 또는 비밀번호가 올바르지 않습니다.")) // 2. 응답 JSON의 message 필드 값 확인
+                .andDo(print());
+    }
+
+    // --- 회원가입 테스트 ---
+    @Test
+    @DisplayName("회원가입 성공")
+    void signup_success() throws Exception {
+        // given
+        SignupRequestDto signupRequestDto = new SignupRequestDto();
+        signupRequestDto.setPhone("01099998888");
+        signupRequestDto.setPassword("newpassword123");
+        signupRequestDto.setDisplayName("신규유저");
+
+        // when & then
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(signupRequestDto)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("회원가입이 완료되었습니다."))
+                .andDo(print());
+
+        // DB에 실제로 저장되었는지, 비밀번호는 암호화되었는지 검증
+        User signedUpUser = userRepository.findByPhoneNumber("01099998888").orElseThrow();
+        assertEquals("신규유저", signedUpUser.getDisplayName());
+        assertTrue(passwordEncoder.matches("newpassword123", signedUpUser.getPassword()));
+    }
+
+    @Test
+    @DisplayName("회원가입 실패 - 중복된 전화번호")
+    void signup_fail_duplicate_phone() throws Exception {
+        // given
+        SignupRequestDto signupRequestDto = new SignupRequestDto();
+        signupRequestDto.setPhone("01012345678"); // 이미 존재하는 전화번호
+        signupRequestDto.setPassword("anotherpassword");
+        signupRequestDto.setDisplayName("중복된유저");
+
+        // when & then
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(signupRequestDto)))
+                .andExpect(status().isBadRequest()) // 400 Bad Request
+                .andExpect(jsonPath("$.message").value("이미 사용 중인 전화번호입니다."))
+                .andDo(print());
+    }
+
+    @Test
+    @DisplayName("회원가입 실패 - 유효성 검사 (짧은 비밀번호)")
+    void signup_fail_validation() throws Exception {
+        // given
+        SignupRequestDto signupRequestDto = new SignupRequestDto();
+        signupRequestDto.setPhone("01011112222");
+        signupRequestDto.setPassword("1234"); // 8자 미만 비밀번호
+        signupRequestDto.setDisplayName("유효성실패유저");
+
+        // when & then
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(signupRequestDto)))
+                .andExpect(status().isBadRequest()) // @Valid에 의해 400 에러 발생
+                .andDo(print());
+    }
+
+    // --- 회원탈퇴 테스트 ---
+    @Test
+    @DisplayName("회원탈퇴 성공")
+    void withdraw_success() throws Exception {
+        // given
+        String phoneNumber = "01012345678";
+        String token = jwtUtil.generateToken(phoneNumber); // 테스트용 토큰 발급
+
+        // when & then
+        mockMvc.perform(delete("/api/auth/withdraw")
+                        .header("Authorization", "Bearer " + token)) // 인증 헤더 추가
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("회원탈퇴가 성공적으로 처리되었습니다."))
+                .andDo(print());
+
+        // DB에서 실제로 삭제되었는지 검증
+        Optional<User> withdrawnUser = userRepository.findByPhoneNumber(phoneNumber);
+        assertFalse(withdrawnUser.isPresent());
+    }
+
+    @Test
+    @DisplayName("회원탈퇴 실패 - 인증 토큰 없음")
+    void withdraw_fail_unauthorized() throws Exception {
+        // given (인증 토큰 없이 요청)
+
+        // when & then
+        mockMvc.perform(delete("/api/auth/withdraw"))
+                .andExpect(status().isUnauthorized()) // Spring Security는 인증 실패 시 기본적으로 403 Forbidden 반환
                 .andDo(print());
     }
 }
