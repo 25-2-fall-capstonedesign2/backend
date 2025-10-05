@@ -40,6 +40,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa' // JPA 추가(SQL쿼리 대신 객체지향)
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0' // Swagger UI 추가
     implementation 'org.springframework.boot:spring-boot-starter-websocket' // WebSocket 의존성 추가
+    testImplementation 'com.h2database:h2' // test에서는 H2 in-line db 사용
 }
 
 tasks.named('test') {
