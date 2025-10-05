@@ -10,11 +10,11 @@ description = 'backend'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
-// gradle daemon is forced to use JDK25
+// gradle daemon is forced to use JDK21
 gradle.projectsEvaluated {
     tasks.withType(JavaCompile) {
         options.fork = true

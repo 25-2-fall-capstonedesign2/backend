@@ -4,7 +4,7 @@
 # =================================================================
 # 버전을 gradle:8.5.0-jdk25-jammy로 변경
 # jdk25와 gradle 포함
-FROM gradle:8.5.0-jdk25-jammy AS build
+FROM gradle:8.9-jdk21-jammy AS build
 
 # 작업 디렉토리 설정
 WORKDIR /app
@@ -22,7 +22,7 @@ RUN ./gradlew build -x test
 # 빌드된 애플리케이션을 실행하는 최종 이미지를 만드는 단계
 # =================================================================
 # 버전을 eclipse-temurin:25-jre-jammy로 변경
-FROM eclipse-temurin:25-jre-jammy
+FROM eclipse-temurin:21-jre-jammy
 
 # 작업 디렉토리 설정
 WORKDIR /app
