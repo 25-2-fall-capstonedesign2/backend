@@ -1,97 +1,115 @@
 package com.capstone.backend.service;
 
-import com.capstone.backend.handler.AiModelWebSocketHandler;
-import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.web.socket.BinaryMessage;
-import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.client.WebSocketClient;
-import org.springframework.web.socket.client.standard.StandardWebSocketClient;
-import org.springframework.web.socket.client.support.WebSocketClientManager;
-
+import com.capstone.backend.dto.VoiceMessage;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import java.io.IOException;
-import java.net.URI;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.converter.MappingJackson2MessageConverter;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaders;
+import org.springframework.messaging.simp.stomp.StompSession;
+import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
+import org.springframework.stereotype.Service;
+import org.springframework.web.socket.client.standard.StandardWebSocketClient;
+import org.springframework.web.socket.messaging.WebSocketStompClient;
+import org.springframework.web.socket.sockjs.client.SockJsClient;
+import org.springframework.web.socket.sockjs.client.Transport;
+import org.springframework.web.socket.sockjs.client.WebSocketTransport;
+
+import java.util.concurrent.CompletableFuture;
+import java.lang.reflect.Type;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 @Slf4j
 @Service
 public class WebSocketService {
 
-    @Value("${ai.model.websocket.url}")
-    private String aiModelUrl;
+    // 로컬 GPU 서버의 ngrok 주소 (실제 주소로 변경해야 합니다)
+    private static final String GPU_SERVER_URL = "ws://your-ngrok-address.ngrok.io/ws-stomp";
 
-    @Getter // 핸들러에서 세션에 접근할 수 있도록 Getter 추가
-    private WebSocketSession aiModelSession;
+    private WebSocketStompClient stompClient;
+    private StompSession stompSession;
 
-    private final Map<Long, WebSocketSession> userSessions = new ConcurrentHashMap<>();
-    private final WebSocketClientManager clientManager;
-
-    // 생성자에서 WebSocketClientManager를 초기화합니다.
-    public WebSocketService(@Value("${ai.model.websocket.url}") String aiModelUrl) {
-        WebSocketClient client = new StandardWebSocketClient();
-        // AiModelWebSocketHandler에 자기 자신(service)을 주입합니다.
-        this.clientManager = new WebSocketClientManager(client, new AiModelWebSocketHandler(this), aiModelUrl);
-        this.clientManager.setAutoStartup(true); // 자동 시작 설정
+    public WebSocketService() {
+        // StandardWebSocketClient를 기본으로 사용하고, SockJS로 폴백할 수 있도록 설정합니다.
+        List<Transport> transports = Collections.singletonList(new WebSocketTransport(new StandardWebSocketClient()));
+        SockJsClient sockJsClient = new SockJsClient(transports);
+        this.stompClient = new WebSocketStompClient(sockJsClient);
+        this.stompClient.setMessageConverter(new MappingJackson2MessageConverter());
     }
 
-    // 서버 시작 시 WebSocketClientManager를 실행합니다.
+    // Spring 컨테이너가 생성된 후 자동으로 연결을 시도합니다.
     @PostConstruct
-    private void startConnectionManager() {
-        log.info("Starting WebSocketClientManager to connect to AI Model at: {}", aiModelUrl);
-        // Manager가 알아서 연결을 시도하고 유지합니다.
-        this.clientManager.start();
-    }
-
-    // 서버 종료 시 Manager를 중지합니다.
-    @PreDestroy
-    private void stopConnectionManager() {
-        log.info("Stopping WebSocketClientManager.");
-        this.clientManager.stop();
-    }
-
-    // AiModelWebSocketHandler가 연결 성공 시 이 메서드를 호출하여 세션을 저장합니다.
-    public void setAiModelSession(WebSocketSession session) {
-        this.aiModelSession = session;
-    }
-
-
-    // 사용자 세션 등록
-    public void registerUserSession(Long callSessionId, WebSocketSession session) {
-        userSessions.put(callSessionId, session);
-    }
-
-    // 사용자 세션 제거
-    public void removeUserSession(Long callSessionId) {
-        userSessions.remove(callSessionId);
-    }
-
-    // 사용자 음성 데이터를 AI 모델로 전송
-    public void sendToAiModel(Long callSessionId, BinaryMessage message) {
-        if (aiModelSession != null && aiModelSession.isOpen()) {
-            try {
-                // TODO: 필요시 callSessionId를 데이터에 포함시켜 AI가 세션을 구분하게 할 수 있음
-                // 예: 메시지 포맷 정의 { "sessionId": 123, "audio": "..." }
-                aiModelSession.sendMessage(message);
-            } catch (IOException e) {
-                log.error("Error sending message to AI model for callSessionId: {}", callSessionId, e);
+    public void connect() {
+        // CHANGED: ListenableFuture 대신 CompletableFuture를 사용합니다.
+        // connectAsync 메서드는 Spring 6.1+ 부터 사용 가능하며, 이전 버전에서는 connect()가 CompletableFuture를 반환합니다.
+        CompletableFuture<StompSession> future = stompClient.connectAsync(GPU_SERVER_URL, new StompSessionHandlerAdapter() {
+            @Override
+            public void afterConnected(StompSession session, StompHeaders connectedHeaders) {
+                log.info("로컬 GPU 서버와 연결되었습니다. Session: {}", session.getSessionId());
+                session.subscribe("/topic/results", this);
+                log.info("/topic/results 구독 시작");
             }
+
+            @Override
+            public void handleException(StompSession session, StompCommand command, StompHeaders headers, byte[] payload, Throwable exception) {
+                log.error("STOMP 예외 발생", exception);
+            }
+
+            @Override
+            public void handleTransportError(StompSession session, Throwable exception) {
+                log.error("전송 오류 발생: {}", exception.getMessage());
+                // 여기서 재연결 로직을 시도할 수 있습니다.
+            }
+
+            @Override
+            public Type getPayloadType(StompHeaders headers) {
+                return VoiceMessage.class;
+            }
+
+            @Override
+            public void handleFrame(StompHeaders headers, Object payload) {
+                VoiceMessage voiceMessage = (VoiceMessage) payload;
+                log.info("GPU 서버로부터 메시지 수신: {}", voiceMessage.getData());
+                // TODO: 여기서 SimpMessagingTemplate을 사용하여 특정 클라이언트에게 메시지 전송
+            }
+        });
+
+        // 비동기 콜백으로 세션과 예외를 처리합니다.
+        future.whenComplete((session, throwable) -> {
+            if (throwable != null) {
+                log.error("로컬 GPU 서버 연결 실패", throwable);
+                // TODO: 연결 실패 시 재시도 로직 구현
+            } else {
+                // 연결 성공 시 세션을 클래스 필드에 저장합니다.
+                this.stompSession = session;
+                log.info("비동기 연결 성공. 세션 저장 완료.");
+            }
+        });
+    }
+
+    // 애플리케이션 종료 시 연결을 해제합니다.
+    @PreDestroy
+    public void disconnect() {
+        if (stompSession != null && stompSession.isConnected()) {
+            stompSession.disconnect();
+            log.info("로컬 GPU 서버와 연결을 해제했습니다.");
         }
     }
 
-    // AI 모델의 응답을 특정 사용자에게 전송
-    public void sendToUser(Long callSessionId, BinaryMessage message) {
-        WebSocketSession userSession = userSessions.get(callSessionId);
-        if (userSession != null && userSession.isOpen()) {
-            try {
-                userSession.sendMessage(message);
-            } catch (IOException e) {
-                log.error("Error sending message to user for callSessionId: {}", callSessionId, e);
-            }
+    /**
+     * 안드로이드 클라이언트로부터 받은 음성 데이터를 GPU 서버로 전송합니다.
+     * @param voiceMessage 음성 메시지 DTO
+     */
+    public void sendToGpuServer(VoiceMessage voiceMessage) {
+        if (stompSession != null && stompSession.isConnected()) {
+            stompSession.send("/app/process-audio", voiceMessage);
+            log.info("음성 데이터를 GPU 서버로 전송했습니다. SessionId: {}", voiceMessage.getSessionId());
+        } else {
+            log.warn("GPU 서버에 연결되어 있지 않아 메시지를 전송할 수 없습니다.");
+            // TODO: 연결이 끊겼을 경우, 메시지를 큐에 임시 저장하고 재연결 후 전송하는 로직 추가 가능
         }
     }
 }
