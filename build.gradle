@@ -26,7 +26,6 @@ repositories {
 
 dependencies {
     implementation 'org.apache.commons:commons-lang3:3.18.0'
-
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     compileOnly 'org.projectlombok:lombok'
@@ -37,14 +36,14 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    // JWT 라이브러리 추가
+// JWT 라이브러리 추가
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
-
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa' // JPA 추가(SQL쿼리 대신 객체지향)
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0' // Swagger UI 추가
-    implementation 'org.springframework.boot:spring-boot-starter-websocket' // WebSocket 의존성 추가
+    implementation 'org.springframework.boot:spring-boot-starter-websocket' // Websocket 관련 의존성
+    implementation 'jakarta.annotation:jakarta.annotation-api'
     testImplementation 'com.h2database:h2' // test에서는 H2 in-line db 사용
     implementation 'org.springframework.boot:spring-boot-starter-validation' // 데이터 첫 입력 시 유효성 검사
 }
@@ -52,7 +51,7 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 
-    // 테스트 로그
+// 테스트 로그
     testLogging {
         events "passed", "skipped", "failed" // 성공, 스킵, 실패 이벤트를 모두 보여줌
         exceptionFormat "full" // 예외 발생 시 전체 스택 트레이스를 보여줌
