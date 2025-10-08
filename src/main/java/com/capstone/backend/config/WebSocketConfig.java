@@ -25,7 +25,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // 클라이언트가 WebSocket 연결을 맺기 위한 최초의 접속 지점(Endpoint)을 설정합니다.
         registry.addEndpoint("/ws-stomp") // 엔드포인트: /ws-stomp
-                .setAllowedOriginPatterns("*") // 모든 출처(CORS)에서의 연결을 허용합니다.
-                .withSockJS(); // WebSocket을 지원하지 않는 브라우저를 위한 SockJS 옵션을 활성화합니다.
+                .setAllowedOriginPatterns("*"); // 모든 출처(CORS)에서의 연결을 허용합니다.
+                //.withSockJS(); // WebSocket을 지원하지 않는 브라우저를 위한 SockJS 옵션을 활성화합니다.
     }
 }

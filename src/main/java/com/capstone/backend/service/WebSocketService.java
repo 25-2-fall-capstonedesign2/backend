@@ -32,7 +32,8 @@ public class WebSocketService {
     private WebSocketStompClient stompClient;
     private StompSession stompSession;
 
-    @PostConstruct
+    // 서버 시작 시 연결 시도를 해제 -- 테스트를 위한 주석 처리 위치
+    //@PostConstruct
     public void init() {
         // WebSocketStompClient를 초기화합니다.
         List<Transport> transports = Collections.singletonList(new WebSocketTransport(new StandardWebSocketClient()));
