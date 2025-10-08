@@ -50,11 +50,11 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         // 모든 출처에서의 요청을 허용합니다. (개발용)
-        configuration.setAllowedOrigins(Arrays.asList("*"));
+        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
         // 허용할 HTTP 메서드를 지정합니다.
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         // 허용할 HTTP 헤더를 지정합니다.
-        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
         // 자격 증명(쿠키 등)을 허용할지 여부입니다.
         configuration.setAllowCredentials(true);
 
