@@ -1,5 +1,6 @@
 package com.capstone.backend.config;
 
+import com.capstone.backend.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,7 +10,6 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import com.capstone.backend.security.JwtAuthenticationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -45,21 +45,17 @@ public class SecurityConfig {
 
         return http.build();
     }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // 모든 출처에서의 요청을 허용합니다. (개발용)
-        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
-        // 허용할 HTTP 메서드를 지정합니다.
+        configuration.setAllowedOriginPatterns(Arrays.asList("*")); // 모든 출처 패턴 허용
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        // 허용할 HTTP 헤더를 지정합니다.
-        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
-        // 자격 증명(쿠키 등)을 허용할지 여부입니다.
+        configuration.setAllowedHeaders(Arrays.asList("*")); // 모든 헤더 허용
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        // 모든 경로에 대해 위에서 정의한 CORS 정책을 적용합니다.
         source.registerCorsConfiguration("/**", configuration);
 
         return source;
