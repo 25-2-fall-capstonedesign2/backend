@@ -37,8 +37,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable()) // CSRF 보호 비활성화 (Stateless JWT 인증 사용)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // 세션을 사용하지 않음
                 .authorizeHttpRequests(authz -> authz
-                        .requestMatchers("/api/auth/**").permitAll() // '/api/auth/' 하위 경로는 인증 없이 접근 허용
-                        .requestMatchers("/ws-stomp/**").permitAll() // 웹소켓 연결 경로('/ws-stomp/**')는 인증 없이 접근 허용
+                        .requestMatchers("/api/auth/**", "/ws-stomp/**").permitAll() // '/api/auth/' 하위 경로는 인증 없이 접근 허용
                         .anyRequest().authenticated() // 그 외 모든 요청은 인증 필요
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

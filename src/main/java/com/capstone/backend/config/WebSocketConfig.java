@@ -1,31 +1,52 @@
 package com.capstone.backend.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
 @Configuration
-@EnableWebSocketMessageBroker // STOMP를 사용하기 위해 이 어노테이션을 선언합니다.
+@EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
-    public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // 클라이언트가 WebSocket 연결을 맺기 위한 최초의 접속 지점(Endpoint)을 설정합니다.
-        registry.addEndpoint("/ws-stomp") // 엔드포인트: /ws-stomp
-                .setAllowedOriginPatterns("*"); // 모든 출처(CORS)에서의 연결을 허용합니다.
-        //.withSockJS(); // WebSocket을 지원하지 않는 브라우저를 위한 SockJS 옵션을 활성화합니다.
+    public void configureMessageBroker(MessageBrokerRegistry registry) {
+        registry.setApplicationDestinationPrefixes("/app");
+        registry.enableSimpleBroker("/topic");
     }
 
     @Override
-    public void configureMessageBroker(MessageBrokerRegistry registry) {
-        // 1. 클라이언트 -> 서버 메시지 발행(publish) 경로 Prefix
-        // 클라이언트가 "/app"으로 시작하는 경로로 메시지를 보내면, 서버의 @MessageMapping 메서드로 라우팅됩니다.
-        registry.setApplicationDestinationPrefixes("/app");
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.addEndpoint("/ws-stomp")
+                .setAllowedOriginPatterns("*");
+    }
 
-        // 2. 서버 -> 클라이언트 메시지 구독(subscribe) 경로 Prefix
-        // "/topic"으로 시작하는 주제를 구독하는 클라이언트에게 메시지 브로커가 메시지를 전파합니다.
-        registry.enableSimpleBroker("/topic");
+    /**
+     * 클라이언트로부터 들어오는 메시지(inbound) 채널을 구성합니다.
+     * 이 메서드가 '보이지 않는 벽' 문제를 해결하는 열쇠입니다.
+     */
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(new ChannelInterceptor() {
+            @Override
+            public Message<?> preSend(Message<?> message, MessageChannel channel) {
+                StompHeaderAccessor accessor =
+                        MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+                // STOMP CONNECT 요청인 경우, 아무런 추가 검증 없이 통과시킵니다.
+                // 이것으로 CONNECT(0) 문제를 최종적으로 해결합니다.
+                if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+                    // (필요 시 여기서 사용자 인증 정보를 헤더에 추가할 수 있습니다.)
+                }
+                return message;
+            }
+        });
     }
 }

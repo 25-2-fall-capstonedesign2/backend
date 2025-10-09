@@ -48,7 +48,7 @@ dependencies {
     implementation 'jakarta.annotation:jakarta.annotation-api'
     testImplementation 'com.h2database:h2' // test에서는 H2 in-line db 사용
     implementation 'org.springframework.boot:spring-boot-starter-validation' // 데이터 첫 입력 시 유효성 검사
-    implementation 'org.springframework.security:spring-security-messaging' // 웹소켓 로컬 테스트를 위한 의존성
+    //implementation 'org.springframework.security:spring-security-messaging' // 웹소켓 로컬 테스트를 위한 의존성
 }
 
 tasks.named('test') {
