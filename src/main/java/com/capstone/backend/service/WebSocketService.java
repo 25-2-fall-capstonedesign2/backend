@@ -3,68 +3,71 @@ package com.capstone.backend.service;
 import com.capstone.backend.dto.VoiceMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
-import java.util.Base64;
+import org.springframework.util.MimeTypeUtils;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class WebSocketService {
 
-    // 클라이언트에게 메시지를 보내기 위한 SimpMessagingTemplate은 그대로 둡니다.
     private final SimpMessagingTemplate messagingTemplate;
 
+    // GPU Worker들이 작업을 받기 위해 구독할 공용 토픽
+    private static final String GPU_TASK_TOPIC = "/topic/gpu-tasks";
+
     /**
-     * 클라이언트로부터 받은 음성 데이터 조각(chunk)을 처리합니다.
-     * 이 메서드는 이제 WebSocketController를 통해 호출됩니다.
-     * @param message "audio_chunk" 타입의 메시지
+     * 고객의 음성 데이터를 GPU Worker에게 전달합니다.
+     * @param customerMessage 고객으로부터 받은 원본 메시지 (sessionId 포함)
      */
-    public void processAudioChunk(VoiceMessage message) {
-        log.info("Processing 'audio_chunk' for session: {}", message.getSessionId());
+    public void forwardAudioToGpu(VoiceMessage customerMessage) {
+        log.info("Forwarding audio from session {} to GPU workers.", customerMessage.getSessionId());
 
-        try {
-            byte[] audioData = Base64.getDecoder().decode(message.getData());
-            log.info("Decoded audio data size: {} bytes for session: {}", audioData.length, message.getSessionId());
-
-            // TODO: 수신된 audioData를 STT 모델로 전달하고 처리하는 로직
-            // ...
-
-            // 예시: 처리 결과를 다시 클라이언트에게 전송
-            String destination = "/topic/session/" + message.getSessionId();
-            // messagingTemplate.convertAndSend(destination, response);
-
-        } catch (IllegalArgumentException e) {
-            log.error("Failed to decode Base64 data for session: {}. Error: {}", message.getSessionId(), e.getMessage());
-        }
+        // customerMessage 객체 그대로 GPU 토픽으로 전송
+        // 이 메시지 안에는 어떤 고객의 요청인지 식별하기 위한 sessionId가 이미 들어있음
+        messagingTemplate.convertAndSend(GPU_TASK_TOPIC, customerMessage);
     }
 
     /**
-     * 클라이언트로부터 받은 텍스트 데이터 조각(chunk)을 처리합니다.
-     * @param message "text_chunk" 타입의 메시지
+     * [오디오 처리] GPU가 보낸 바이너리 음성 데이터를 고객에게 그대로 전달합니다.
      */
-    public void processTextChunk(VoiceMessage message) {
-        log.info("Processing 'text_chunk' for session {}: {}", message.getSessionId(), message.getData());
-        String userText = message.getData();
+    public void sendAudioToCustomer(String customerSessionId, byte[] audioData) {
+        if (customerSessionId == null || customerSessionId.isEmpty()) {
+            log.error("GPU result is missing the original customer session ID.");
+            return;
+        }
+        log.info("Sending binary audio data to session: {}", customerSessionId);
+        String destination = "/topic/session/" + customerSessionId;
 
-        // 1. TODO: [DB 저장] 사용자의 발화 텍스트를 Message 테이블에 저장
+        // 헤더에 바이너리 타입을 명시하여 전송
+        SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.create();
+        headerAccessor.setDestination(destination);
+        headerAccessor.setContentType(MimeTypeUtils.APPLICATION_OCTET_STREAM);
 
-        // 2. TODO: [생성형 AI 연동] 수신된 텍스트(userText)를 바탕으로 AI의 답변 생성
-        String aiResponseText = "AI가 '" + userText + "'에 대한 답변을 생성했습니다.";
+        messagingTemplate.convertAndSend(destination, audioData, headerAccessor.getMessageHeaders());
+    }
 
-        // 3. TODO: [DB 저장] AI의 답변 내용을 Message 테이블에 저장
+    /**
+     * [텍스트 처리] GPU가 보낸 문자열을 JSON 객체로 변환하여 고객에게 전달합니다.
+     */
+    public void sendTextToCustomer(String customerSessionId, String textData) {
+        log.info("Sending text data to session {}: {}", customerSessionId, textData);
+        String destination = "/topic/session/" + customerSessionId;
 
-        // 4. TODO: [TTS 모델 연동] 생성된 답변 텍스트를 TTS 모델로 보내 음성 데이터 생성
-        String encodedAiVoiceData = "BASE64_ENCODED_AI_VOICE_FROM_TEXT_EXAMPLE";
+        // ❗️ DTO 대신 Map을 사용하여 보낼 JSON 페이로드를 직접 구성합니다.
+        // 이렇게 하면 data 필드를 String 타입으로 자유롭게 보낼 수 있습니다.
+        // TODO: DB 저장 로직 구현 필요
+        Map<String, String> payload = new HashMap<>();
+        payload.put("type", "transcript");
+        payload.put("sessionId", customerSessionId);
+        payload.put("data", textData); // textData는 String 타입
 
-        // 5. 클라이언트에게 AI의 음성 응답 전송
-        VoiceMessage response = new VoiceMessage();
-        response.setType("ai_voice_chunk");
-        response.setData(encodedAiVoiceData);
-        response.setSessionId(message.getSessionId());
 
-        String destination = "/topic/session/" + message.getSessionId();
-        messagingTemplate.convertAndSend(destination, response);
-        log.info("Sent AI voice response (from text) to destination: {}", destination);
+        messagingTemplate.convertAndSend(destination, payload);
     }
 }
