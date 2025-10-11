@@ -5,6 +5,7 @@ import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.BinaryWebSocketHandler;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
 import java.util.Map;
@@ -26,8 +27,18 @@ public class BinaryWebSocketConfig extends BinaryWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         // 연결이 끊기면 맵에서 세션을 제거합니다.
-        sessions.remove(session.getId());
-        System.out.println("Binary WebSocket disconnected: " + session.getId() + " with status: " + status);
+        String callSessionId = getCallSessionId(session);
+        if (callSessionId != null && !callSessionId.isEmpty()) {
+            // 2. 추출한 '통화 세션 ID'를 Key로, 실제 연결된 WebSocketSession을 Value로 맵에 저장합니다.
+            sessions.put(callSessionId, session);
+            // 3. 어떤 WebSocketSession 객체에 어떤 ID가 매핑되었는지 추적하기 위해 session의 attribute에도 저장합니다.
+            session.getAttributes().put("callSessionId", callSessionId);
+            System.out.println("Binary WebSocket connected. Mapped callSessionId: " + callSessionId + " to session: " + session.getId());
+        } else {
+            // 통화 세션 ID가 없으면 비정상 연결로 간주하고 연결을 종료합니다.
+            System.err.println("Connection attempt without a valid 'sessionId' query parameter. Closing session.");
+            session.close(CloseStatus.BAD_DATA.withReason("sessionId query parameter is required."));
+        }
     }
 
     /**
@@ -47,6 +58,18 @@ public class BinaryWebSocketConfig extends BinaryWebSocketHandler {
         } else {
             System.err.println("Session not found or closed for ID: " + sessionId);
         }
+    }
+
+    /**
+     * WebSocketSession의 URI에서 'sessionId' 쿼리 파라미터 값을 추출하는 헬퍼 메소드
+     */
+    private String getCallSessionId(WebSocketSession session) {
+        // 테스트 HTML에서 sessionId를 쿼리 파라미터로 넘기지 않으므로 임시로 null을 허용합니다.
+        // 실제 클라이언트 개발 시에는 Objects.requireNonNull을 사용하여 ID가 없는 경우를 차단해야 합니다.
+        if (session.getUri() == null) return null;
+        return UriComponentsBuilder.fromUri(session.getUri()).build()
+                .getQueryParams()
+                .getFirst("sessionId");
     }
 
     /**
