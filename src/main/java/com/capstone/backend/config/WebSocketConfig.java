@@ -1,63 +1,104 @@
 package com.capstone.backend.config;
 
+import com.capstone.backend.dto.VoiceMessage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.messaging.Message;
-import org.springframework.messaging.MessageChannel;
-import org.springframework.messaging.simp.config.ChannelRegistration;
-import org.springframework.messaging.simp.config.MessageBrokerRegistry;
-import org.springframework.messaging.simp.stomp.StompCommand;
-import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
-import org.springframework.messaging.support.ChannelInterceptor;
-import org.springframework.messaging.support.MessageHeaderAccessor;
-import org.springframework.web.socket.config.annotation.*;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.web.socket.BinaryMessage;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
+import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
+import org.springframework.web.socket.handler.BinaryWebSocketHandler;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Configuration
-@EnableWebSocketMessageBroker
+@EnableWebSocketMessageBroker // STOMP 활성화는 DelegatingWebSocketMessageBrokerConfiguration를 유발하므로 삭제
 @RequiredArgsConstructor
-public class WebSocketConfig implements WebSocketMessageBrokerConfigurer, WebSocketConfigurer {
+public class WebSocketConfig extends BinaryWebSocketHandler implements WebSocketConfigurer {
 
-    private final BinaryWebSocketConfig binaryWebSocketConfig;
+    private final SimpMessagingTemplate messagingTemplate;
 
-    /* stomp 방식 설정 - text, json 파일이 대상 */
+    private static final String GPU_TASK_TOPIC = "/topic/gpu-tasks";
+    private static final Map<String, WebSocketSession> clientSessions = new ConcurrentHashMap<>();
+
+    // --- 순수 WebSocket 핸들러 로직 (기존 BinaryWebSocketConfig의 내용) ---
     @Override
-    public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.setApplicationDestinationPrefixes("/app");
-        registry.enableSimpleBroker("/topic");
+    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+        String callSessionId = getQueryParam(session, "sessionId");
+        String userType = getQueryParam(session, "type");
+
+        if (callSessionId == null || userType == null) {
+            session.close(CloseStatus.BAD_DATA.withReason("sessionId and type parameters are required."));
+            return;
+        }
+
+        if ("client".equals(userType)) {
+            clientSessions.put(callSessionId, session);
+            session.getAttributes().put("callSessionId", callSessionId);
+            System.out.println("Client connected via binary WebSocket. Mapped callSessionId: " + callSessionId);
+        } else {
+            System.out.println("GPU worker connected via binary WebSocket for callSessionId: " + callSessionId);
+        }
+        session.getAttributes().put("userType", userType);
     }
 
     @Override
-    public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws-stomp")
-                .setAllowedOriginPatterns("*");
+    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
+        String userType = (String) session.getAttributes().get("userType");
+        String callSessionId = getQueryParam(session, "sessionId");
+        byte[] audioData = message.getPayload().array();
+
+        if ("client".equals(userType)) {
+            // 고객 오디오 -> GPU 작업 토픽으로 발행
+            System.out.println("Received " + audioData.length + " bytes from CLIENT for " + callSessionId);
+            VoiceMessage voiceMessage = new VoiceMessage("audio_chunk", audioData, callSessionId);
+            messagingTemplate.convertAndSend(GPU_TASK_TOPIC, voiceMessage);
+        } else if ("gpu".equals(userType)) {
+            // GPU 오디오 -> 해당 고객에게 직접 전달
+            System.out.println("Received " + audioData.length + " bytes from GPU for " + callSessionId);
+            sendBinaryToClient(callSessionId, audioData);
+        }
     }
 
-    /**
-     * 클라이언트로부터 들어오는 메시지(inbound) 채널을 구성합니다.
-     * 이 메서드가 '보이지 않는 벽' 문제를 해결하는 열쇠입니다.
-     */
-    @Override
-    public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(new ChannelInterceptor() {
-            @Override
-            public Message<?> preSend(Message<?> message, MessageChannel channel) {
-                StompHeaderAccessor accessor =
-                        MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-                // STOMP CONNECT 요청인 경우, 아무런 추가 검증 없이 통과시킵니다.
-                // 이것으로 CONNECT(0) 문제를 최종적으로 해결합니다.
-                if (StompCommand.CONNECT.equals(accessor.getCommand())) {
-                    // (필요 시 여기서 사용자 인증 정보를 헤더에 추가할 수 있습니다.)
-                }
-                return message;
+    public void sendBinaryToClient(String callSessionId, byte[] data) {
+        WebSocketSession session = clientSessions.get(callSessionId);
+        if (session != null && session.isOpen()) {
+            try {
+                session.sendMessage(new BinaryMessage(data));
+            } catch (IOException e) {
+                System.err.println("Error sending binary message to " + callSessionId + ": " + e.getMessage());
             }
-        });
+        }
     }
 
-    /* 순수 WebSocket 관련 설정 -- audio data 가 대상 */
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+        if ("client".equals(session.getAttributes().get("userType"))) {
+            String callSessionId = (String) session.getAttributes().get("callSessionId");
+            if (callSessionId != null) {
+                clientSessions.remove(callSessionId);
+                System.out.println("Client binary WebSocket disconnected. Removed mapping for: " + callSessionId);
+            }
+        } else {
+            System.out.println("GPU worker binary WebSocket disconnected.");
+        }
+    }
+
+    private String getQueryParam(WebSocketSession session, String key) {
+        if (session.getUri() == null) return null;
+        return UriComponentsBuilder.fromUri(session.getUri()).build().getQueryParams().getFirst(key);
+    }
+
+    // --- WebSocketConfigurer 구현 (핸들러 등록) ---
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        // 음성(바이너리) 데이터용 WebSocket 엔드포인트
-        registry.addHandler(binaryWebSocketConfig, "/ws-binary")
-                .setAllowedOriginPatterns("*");
+        // "/ws-binary" 경로의 요청을 이 클래스(자기 자신)가 처리하도록 등록
+        registry.addHandler(this, "/ws-binary").setAllowedOriginPatterns("*");
     }
 }
