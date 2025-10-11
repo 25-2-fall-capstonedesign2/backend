@@ -1,5 +1,6 @@
 package com.capstone.backend.controller;
 
+import com.capstone.backend.dto.TextMessage;
 import com.capstone.backend.dto.VoiceMessage;
 import com.capstone.backend.service.WebSocketService;
 import lombok.RequiredArgsConstructor;
@@ -15,13 +16,23 @@ public class WebSocketController {
     private final WebSocketService webSocketService;
 
     /**
-     * 고객(Customer)으로부터 음성 데이터를 받는 엔드포인트
+     * 안드로이드 클라이언트로부터 '음성 데이터'를 받는 엔드포인트입니다.
+     * 클라이언트는 STOMP를 통해 이 주소로 VoiceMessage DTO를 전송합니다.
+     * 받은 데이터는 GPU 워커에게 전달됩니다.
      */
-    @MessageMapping("/audio-stream/{sessionId}")
-    public void handleCustomerAudio(VoiceMessage message, @DestinationVariable String sessionId) {
-        // 메시지에 세션 ID를 설정하여 서비스 로직으로 전달
-        message.setSessionId(sessionId);
-        webSocketService.forwardAudioToGpu(message);
+    @MessageMapping("/audio.stream")
+    public void handleClientAudio(@Payload VoiceMessage voiceMessage) {
+        // VoiceMessage DTO에 이미 sessionId가 포함되어 있어야 합니다.
+        webSocketService.forwardAudioToGpu(voiceMessage);
+    }
+
+    /**
+     * 안드로이드 클라이언트로부터 '텍스트 데이터'를 받는 엔드포인트입니다. (향후 확장용)
+     * 사용자가 직접 텍스트를 입력하는 경우를 대비합니다.
+     */
+    @MessageMapping("/text.message")
+    public void handleClientText(@Payload TextMessage textMessage) {
+        // webSocketService.processUserTextMessage(textMessage); // DB 저장 등 로직 호출
     }
 
     /**
@@ -34,6 +45,7 @@ public class WebSocketController {
 
     /**
      * GPU Worker로부터 '텍스트' 결과를 받는 엔드포인트
+     * TODO: DB 저장 로직 필요
      */
     @MessageMapping("/gpu-text-result/{sessionId}")
     public void handleGpuTextResult(@DestinationVariable String sessionId, @Payload String textData) {

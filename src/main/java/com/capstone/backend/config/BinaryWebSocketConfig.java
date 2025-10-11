@@ -13,47 +13,52 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class BinaryWebSocketConfig extends BinaryWebSocketHandler {
 
-    // 세션 ID와 WebSocketSession을 매핑하여 저장
     private static final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        // 연결 시 클라이언트가 보낸 고유 ID(예: 쿼리 파라미터)를 세션 ID로 사용
-        // 예: ws://localhost:8080/ws-binary?sessionId=고객세션ID
-        String sessionId = (String) session.getAttributes().get("sessionId");
-        if (sessionId != null && !sessionId.isEmpty()) {
-            sessions.put(sessionId, session);
-            System.out.println("Binary WebSocket connected: " + sessionId);
-        } else {
-            System.out.println("Connection without session ID rejected.");
-            session.close();
-        }
-    }
-
-    @Override
-    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
-        // 이 핸들러는 클라이언트 -> 서버로 바이너리 보낼 때 사용 (현재 요구사항에는 없음)
-        // 필요하다면 여기에 로직 구현
+        // WebSocket 연결이 성공하면 세션을 저장합니다.
+        // 이때 세션의 고유 ID를 key로 사용합니다.
+        sessions.put(session.getId(), session);
+        System.out.println("Binary WebSocket connected: " + session.getId());
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        String sessionId = (String) session.getAttributes().get("sessionId");
-        if (sessionId != null) {
-            sessions.remove(sessionId);
-            System.out.println("Binary WebSocket disconnected: " + sessionId);
-        }
+        // 연결이 끊기면 맵에서 세션을 제거합니다.
+        sessions.remove(session.getId());
+        System.out.println("Binary WebSocket disconnected: " + session.getId() + " with status: " + status);
     }
 
-    // WebSocketService에서 이 메소드를 호출하여 특정 클라이언트에게 바이너리 데이터 전송
+    /**
+     * 특정 세션(클라이언트)에게 바이너리 데이터를 전송합니다.
+     * @param sessionId 전송 대상 WebSocket 세션 ID
+     * @param data 전송할 byte 배열 데이터
+     */
     public void sendBinaryToClient(String sessionId, byte[] data) {
         WebSocketSession session = sessions.get(sessionId);
         if (session != null && session.isOpen()) {
             try {
                 session.sendMessage(new BinaryMessage(data));
             } catch (IOException e) {
-                e.printStackTrace();
+                // 실제 프로덕션에서는 로깅 프레임워크(e.g., SLF4J) 사용을 권장합니다.
+                System.err.println("Error sending binary message to " + sessionId + ": " + e.getMessage());
             }
+        } else {
+            System.err.println("Session not found or closed for ID: " + sessionId);
         }
+    }
+
+    /**
+     * 안드로이드 클라이언트로부터 받은 음성 데이터를 처리합니다.
+     * 이 데이터는 GPU 서버로 전달되어야 합니다.
+     * @param session 메시지를 보낸 클라이언트 세션
+     * @param message 수신된 바이너리 메시지 (음성 데이터)
+     */
+    @Override
+    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
+        // TODO: 여기서 WebSocketService를 호출하여 GPU 서버로 데이터를 전달하는 로직 구현 필요
+        // 예: webSocketService.forwardAudioToGpu(session.getId(), message.getPayload().array());
+        System.out.println("Received binary data of size: " + message.getPayloadLength() + " from " + session.getId());
     }
 }
