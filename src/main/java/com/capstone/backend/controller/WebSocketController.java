@@ -43,6 +43,7 @@ public class WebSocketController {
         webSocketService.sendAudioToCustomer(sessionId, audioData);
     }
 
+
     /**
      * GPU Worker로부터 '텍스트' 결과를 받는 엔드포인트
      * TODO: DB 저장 로직 필요
