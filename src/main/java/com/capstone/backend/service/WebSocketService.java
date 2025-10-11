@@ -3,8 +3,12 @@ package com.capstone.backend.service;
 import com.capstone.backend.dto.VoiceMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageHeaders;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeTypeUtils;
 
@@ -44,13 +48,23 @@ public class WebSocketService {
         log.info("Sending binary audio data to session: {}", customerSessionId);
         String destination = "/topic/session/" + customerSessionId;
 
-        // 헤더에 바이너리 타입을 명시하여 전송
-        SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.create();
+        // 1. STOMP MESSAGE 프레임의 헤더를 직접 생성합니다.
+        StompHeaderAccessor headerAccessor = StompHeaderAccessor.create(StompCommand.MESSAGE);
         headerAccessor.setDestination(destination);
-        headerAccessor.setContentType(MimeTypeUtils.APPLICATION_OCTET_STREAM);
+        headerAccessor.setContentType(MimeTypeUtils.APPLICATION_OCTET_STREAM); // 바이너리 타입 명시
+        headerAccessor.setContentLength(audioData.length); // 콘텐츠 길이 명시
+        // 구독자에게 메시지를 전달하기 위해 subscription-id가 필요할 수 있습니다.
+        // 클라이언트가 구독 시 사용하는 id와 일치해야 하지만, 여기서는 broadcating이므로 임의의 값을 넣어도 동작하는 경우가 많습니다.
+        headerAccessor.setSubscriptionId("sub-0"); // stomp.js의 기본 구독 ID
 
-        messagingTemplate.convertAndSend(destination, audioData, headerAccessor.getMessageHeaders());
-    }
+        MessageHeaders headers = headerAccessor.getMessageHeaders();
+
+        // 2. 헤더와 바이너리 페이로드를 사용하여 최종 메시지를 직접 조립합니다.
+        Message<byte[]> message = MessageBuilder.createMessage(audioData, headers);
+
+        // 3. 'convertAndSend' 대신 'send' 메소드를 사용하여 조립된 메시지를 그대로 전송합니다.
+        // 이 방법은 Spring의 자동 변환 로직을 우회합니다.
+        messagingTemplate.send(destination, message);    }
 
     /**
      * [텍스트 처리] GPU가 보낸 문자열을 JSON 객체로 변환하여 고객에게 전달합니다.
