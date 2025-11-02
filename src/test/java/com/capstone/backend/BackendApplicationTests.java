@@ -56,10 +56,9 @@ class BackendApplicationTests {
     @BeforeEach
     void setUp() {
         userRepository.deleteAll(); // 이전 테스트 데이터를 깔끔하게 지웁니다.
-        User testUser = new User();
-        testUser.setPhoneNumber("01012345678");
-        testUser.setPassword(passwordEncoder.encode("password1234"));
-        testUser.setDisplayName("테스트유저");
+        User testUser = new User("01012345678",
+                    passwordEncoder.encode("password1234"),
+                "테스트유저");
         userRepository.save(testUser);
     }
 

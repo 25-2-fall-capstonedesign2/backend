@@ -42,10 +42,9 @@ public class AuthService {
         }
 
         // 사용자 정보 생성 및 저장
-        User user = new User();
-        user.setPhoneNumber(signupRequestDto.getPhone());
-        user.setPassword(passwordEncoder.encode(signupRequestDto.getPassword()));
-        user.setDisplayName(signupRequestDto.getDisplayName());
+        User user = new User(signupRequestDto.getPhone(),
+                passwordEncoder.encode(signupRequestDto.getPassword()),
+                signupRequestDto.getDisplayName());
         userRepository.save(user);
     }
 
