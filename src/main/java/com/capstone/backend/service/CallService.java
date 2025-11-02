@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.CloseStatus; // CloseStatus 추가
 
 import java.io.IOException;
 import java.util.Map;
@@ -25,7 +26,7 @@ public class CallService {
     private final Map<String, Long> sessionToCallId = new ConcurrentHashMap<>();
     private final Map<String, WebSocketSession> callIdToGpuSession = new ConcurrentHashMap<>(); // (callSessionId, GpuSession)
     private final Map<String, WebSocketSession> gpuSessionToClient = new ConcurrentHashMap<>(); // (GpuSessionId, ClientSession)
-
+    private final Map<Long, WebSocketSession> callIdToClientSession = new ConcurrentHashMap<>();
     /**
      * 고객 세션 등록 및 GPU 매칭 시도
      */
@@ -117,6 +118,39 @@ public class CallService {
             // GPU를 다시 유휴 풀로 반환
             availableGpuWorkers.add(gpuSession);
             log.info("Client {} disconnected. GPU {} returned to pool.", clientSession.getId(), gpuSession.getId());
+        }
+    }
+
+    /**
+     * REST API 호출로 통화 강제 종료
+     * @param callSessionId 종료할 통화 ID
+     */
+    public void forceDisconnectSession(Long callSessionId) {
+        // 대기열(pending)에 있는지 확인
+        WebSocketSession pendingClient = pendingClients.remove(callSessionId);
+        if (pendingClient != null) {
+            log.info("Pending client for session {} removed.", callSessionId);
+            try {
+                pendingClient.close(CloseStatus.NORMAL.withReason("Call ended by API"));
+            } catch (IOException e) {
+                log.warn("Error closing pending client session: {}", e.getMessage());
+            }
+            return;
+        }
+
+        // 활성(active) 상태인지 확인
+        WebSocketSession clientSession = callIdToClientSession.get(callSessionId);
+        if (clientSession != null) {
+            log.info("Forcibly disconnecting active session: {}", callSessionId);
+            try {
+                // disconnectClient가 내부적으로 GPU 반환 등 정리 작업을 수행합니다.
+                disconnectClient(clientSession);
+                clientSession.close(CloseStatus.NORMAL.withReason("Call ended by API"));
+            } catch (Exception e) {
+                log.warn("Error closing active client session: {}", e.getMessage());
+            }
+        } else {
+            log.warn("Tried to disconnect non-existent session: {}", callSessionId);
         }
     }
 

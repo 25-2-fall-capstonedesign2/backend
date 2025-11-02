@@ -39,6 +39,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // 세션을 사용하지 않음
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers("/api/auth/**", "/ws-client/**","/ws-gpu/**").permitAll() // '/api/auth/' 하위 경로는 인증 없이 접근 허용
+                        .requestMatchers("/customer_test.html", "/gpu_test.html").permitAll()
                         .anyRequest().authenticated() // 그 외 모든 요청은 인증 필요
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
