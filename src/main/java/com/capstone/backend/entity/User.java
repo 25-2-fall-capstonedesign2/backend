@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "user") // 실제 DB 테이블 이름 지정
+@Table(name = "users") // 실제 DB 테이블 이름 지정
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // JPA는 기본 생성자가 필요합니다.
 public class User {
