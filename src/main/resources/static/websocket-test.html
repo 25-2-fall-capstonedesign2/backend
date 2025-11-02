@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+<h2>WebSocket 바이너리 통신 테스트</h2>
+<div>
+    <button onclick="connect()">연결</button>
+    <button onclick="disconnect()">연결 종료</button>
+    <button onclick="sendTestData()">테스트 데이터 전송</button>
+</div>
+<div>
+    <h3>로그:</h3>
+    <pre id="log"></pre>
+</div>
+
+<script>
+    let socket = null;
+
+    function log(message) {
+        const logEl = document.getElementById('log');
+        logEl.textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
+    }
+
+    function connect() {
+        // 실제 환경에서는 JWT 토큰 추가 필요
+        socket = new WebSocket('ws://localhost:8080/ws/voice');
+
+        socket.onopen = function(event) {
+            log('✅ WebSocket 연결 성공');
+        };
+
+        socket.onmessage = function(event) {
+            if (event.data instanceof Blob) {
+                event.data.arrayBuffer().then(buffer => {
+                    const view = new Uint8Array(buffer);
+                    log('📨 바이너리 메시지 수신: ' + view.length + ' bytes');
+                    log('   데이터 샘플: [' + Array.from(view.slice(0, 10)).join(', ') + '...]');
+                });
+            }
+        };
+
+        socket.onerror = function(error) {
+            log('❌ 에러 발생: ' + error);
+        };
+
+        socket.onclose = function(event) {
+            log('🔌 연결 종료: ' + event.code + ' - ' + event.reason);
+        };
+    }
+
+    function disconnect() {
+        if (socket) {
+            socket.close();
+            socket = null;
+        }
+    }
+
+    function sendTestData() {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            log('⚠️ 먼저 연결하세요');
+            return;
+        }
+
+        // 테스트용 바이너리 데이터 생성 (1KB)
+        const data = new Uint8Array(1024);
+        for (let i = 0; i < data.length; i++) {
+            data[i] = Math.floor(Math.random() * 256);
+        }
+
+        socket.send(data.buffer);
+        log('📤 테스트 데이터 전송: ' + data.length + ' bytes');
+    }
+</script>
+</body>
+</html>
