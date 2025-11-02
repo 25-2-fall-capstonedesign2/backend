@@ -3,100 +3,144 @@ package com.capstone.backend.service;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.BinaryMessage;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Slf4j
 @Service
 public class CallService {
-
-    // 전체 활성 세션을 관리 (세션 ID, 세션 객체)
-    private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
-    // 고객 세션과 GPU 워커 세션을 1:1로 매핑 (고객 세션 ID, GPU 세션 ID)
-    private final Map<String, String> sessionPairs = new ConcurrentHashMap<>();
-    // 반대 방향 매핑 (GPU 세션 ID, 고객 세션 ID)
-    private final Map<String, String> reverseSessionPairs = new ConcurrentHashMap<>();
-
-    /**
-     * 새로운 WebSocket 연결을 등록합니다.
-     */
-    public void registerSession(WebSocketSession session) {
-        sessions.put(session.getId(), session);
-        log.info("Session registered: {}", session.getId());
-
-        // TODO: 세션을 고객과 GPU로 구분하고 페어링하는 로직이 필요합니다.
-        // 예: URI 쿼리 파라미터로 ?role=customer 또는 ?role=gpu 등으로 구분
-        // 지금은 임시로 고객과 GPU를 번갈아 가며 페어링하는 로직을 가정해 봅니다.
-        findAndPairPartner(session);
-    }
+    // 대기중인 GPU 워커 세션 풀
+    private final Queue<WebSocketSession> availableGpuWorkers = new ConcurrentLinkedQueue<>();
+    // 대기중인 고객 세션
+    private final Map<Long, WebSocketSession> pendingClients = new ConcurrentHashMap<>();
+    // 현재 활성 매칭 (Key: callSessionId, Value: GPU 세션)
+    private final Map<Long, WebSocketSession> activePairs = new ConcurrentHashMap<>();
+    // 세션 ID <-> 통화 ID/세션 객체 매핑 (빠른 조회를 위함)
+    private final Map<String, Long> sessionToCallId = new ConcurrentHashMap<>();
+    private final Map<String, WebSocketSession> callIdToGpuSession = new ConcurrentHashMap<>(); // (callSessionId, GpuSession)
+    private final Map<String, WebSocketSession> gpuSessionToClient = new ConcurrentHashMap<>(); // (GpuSessionId, ClientSession)
 
     /**
-     * 연결된 세션을 기반으로 메시지를 상대방에게 전달합니다.
+     * 고객 세션 등록 및 GPU 매칭 시도
      */
-    public void forwardMessage(WebSocketSession session, BinaryMessage message) {
-        String sessionId = session.getId();
-        String partnerSessionId = sessionPairs.get(sessionId); // 내가 고객일 경우
-        if (partnerSessionId == null) {
-            partnerSessionId = reverseSessionPairs.get(sessionId); // 내가 GPU일 경우
-        }
+    public void registerClient(Long callSessionId, WebSocketSession clientSession) {
+        sessionToCallId.put(clientSession.getId(), callSessionId);
 
-        if (partnerSessionId != null) {
-            WebSocketSession partnerSession = sessions.get(partnerSessionId);
-            if (partnerSession != null && partnerSession.isOpen()) {
-                try {
-                    partnerSession.sendMessage(message);
-                    log.info("Message forwarded from {} to {}", sessionId, partnerSessionId);
-                } catch (IOException e) {
-                    log.error("Failed to forward message from {} to {}: {}", sessionId, partnerSessionId, e.getMessage());
-                }
-            } else {
-                log.warn("Partner session {} for {} is not available.", partnerSessionId, sessionId);
-            }
+        WebSocketSession gpuWorker = availableGpuWorkers.poll(); // 대기 중인 GPU 꺼내기
+        if (gpuWorker != null) {
+            // 매칭 성공
+            activePairs.put(callSessionId, gpuWorker);
+            callIdToGpuSession.put(callSessionId.toString(), gpuWorker);
+            gpuSessionToClient.put(gpuWorker.getId(), clientSession);
+            log.info("Client {} paired with GPU {}", clientSession.getId(), gpuWorker.getId());
         } else {
-            log.warn("No partner found for session {}. Message not forwarded.", sessionId);
+            // 매칭 실패 (대기열 등록)
+            pendingClients.put(callSessionId, clientSession);
+            log.info("Client {} is pending. No available GPU.", clientSession.getId());
         }
     }
 
     /**
-     * WebSocket 연결 종료 시 세션 정보를 정리합니다.
+     * GPU 워커 세션 등록 및 고객 매칭 시도
      */
-    public void removeSession(WebSocketSession session) {
-        String sessionId = session.getId();
-        sessions.remove(sessionId);
+    public void registerGpu(WebSocketSession gpuSession) {
+        // 대기 중인 고객이 있는지 확인
+        Map.Entry<Long, WebSocketSession> pendingClientEntry = pendingClients.entrySet().stream().findFirst().orElse(null);
 
-        // 내가 고객이라면, 매핑된 GPU 정보도 제거
-        String gpuSessionId = sessionPairs.remove(sessionId);
-        if (gpuSessionId != null) {
-            reverseSessionPairs.remove(gpuSessionId);
-            log.info("Pairing removed for customer: {}", sessionId);
+        if (pendingClientEntry != null) {
+            // 매칭 성공
+            Long callSessionId = pendingClientEntry.getKey();
+            WebSocketSession clientSession = pendingClientEntry.getValue();
+            pendingClients.remove(callSessionId); // 대기열에서 제거
+
+            activePairs.put(callSessionId, gpuSession);
+            callIdToGpuSession.put(callSessionId.toString(), gpuSession);
+            gpuSessionToClient.put(gpuSession.getId(), clientSession);
+            log.info("GPU {} paired with pending Client {}", gpuSession.getId(), clientSession.getId());
+        } else {
+            // 매칭 실패 (대기 풀에 등록)
+            availableGpuWorkers.add(gpuSession);
+            log.info("GPU {} is available and added to pool.", gpuSession.getId());
         }
-
-        // 내가 GPU라면, 매핑된 고객 정보도 제거
-        String customerSessionId = reverseSessionPairs.remove(sessionId);
-        if (customerSessionId != null) {
-            sessionPairs.remove(customerSessionId);
-            log.info("Pairing removed for GPU: {}", sessionId);
-        }
-
-        log.info("Session removed: {}", sessionId);
     }
 
-    // 임시 페어링 로직
-    private void findAndPairPartner(WebSocketSession newSession) {
-        // 현재 파트너가 없는 다른 세션을 찾아 페어링합니다.
-        // 실제로는 대기 중인 GPU를 찾거나 하는 더 정교한 로직이 필요합니다.
-        sessions.values().stream()
-                .filter(s -> !s.getId().equals(newSession.getId())) // 자기 자신 제외
-                .filter(s -> !sessionPairs.containsKey(s.getId()) && !reverseSessionPairs.containsKey(s.getId())) // 파트너가 없는 세션
-                .findFirst()
-                .ifPresent(partner -> {
-                    // newSession을 고객, partner를 GPU로 가정
-                    sessionPairs.put(newSession.getId(), partner.getId());
-                    reverseSessionPairs.put(partner.getId(), newSession.getId());
-                    log.info("Session {} and {} are paired.", newSession.getId(), partner.getId());
-                });
+    /**
+     * 고객 -> GPU로 메시지 전달
+     */
+    public void forwardToGpu(WebSocketSession clientSession, BinaryMessage message) throws IOException {
+        Long callSessionId = sessionToCallId.get(clientSession.getId());
+        if (callSessionId == null) return;
+
+        WebSocketSession gpuSession = callIdToGpuSession.get(callSessionId.toString());
+        if (gpuSession != null && gpuSession.isOpen()) {
+            gpuSession.sendMessage(message);
+        } else {
+            log.warn("No paired GPU session found for client {}", clientSession.getId());
+        }
+    }
+
+    /**
+     * GPU -> 고객으로 메시지 전달
+     */
+    public void forwardToClient(WebSocketSession gpuSession, BinaryMessage message) throws IOException {
+        WebSocketSession clientSession = gpuSessionToClient.get(gpuSession.getId());
+        if (clientSession != null && clientSession.isOpen()) {
+            clientSession.sendMessage(message);
+        } else {
+            log.warn("No paired client session found for GPU {}", gpuSession.getId());
+        }
+    }
+
+    /**
+     * 고객 연결 종료 처리
+     */
+    public void disconnectClient(WebSocketSession clientSession) {
+        Long callSessionId = sessionToCallId.remove(clientSession.getId());
+        if (callSessionId == null) return;
+
+        pendingClients.remove(callSessionId); // 대기열에 있었다면 제거
+
+        WebSocketSession gpuSession = activePairs.remove(callSessionId);
+        if (gpuSession != null) {
+            callIdToGpuSession.remove(callSessionId.toString());
+            gpuSessionToClient.remove(gpuSession.getId());
+
+            // TODO: GPU 세션에 "클라이언트가 종료됨" 알림 메시지 전송
+            // gpuSession.sendMessage(new TextMessage("client_disconnected"));
+
+            // GPU를 다시 유휴 풀로 반환
+            availableGpuWorkers.add(gpuSession);
+            log.info("Client {} disconnected. GPU {} returned to pool.", clientSession.getId(), gpuSession.getId());
+        }
+    }
+
+    /**
+     * GPU 연결 종료 처리
+     */
+    public void disconnectGpu(WebSocketSession gpuSession) {
+        availableGpuWorkers.remove(gpuSession); // 유휴 풀에 있었다면 제거
+
+        WebSocketSession clientSession = gpuSessionToClient.remove(gpuSession.getId());
+        if (clientSession != null) {
+            // GPU가 죽었으므로, 연결된 고객에게도 연결 종료/오류 알림
+            Long callSessionId = sessionToCallId.remove(clientSession.getId());
+            activePairs.remove(callSessionId);
+            callIdToGpuSession.remove(callSessionId.toString());
+
+            log.warn("GPU {} disconnected. Notifying client {}.", gpuSession.getId(), clientSession.getId());
+            try {
+                // TODO: 고객에게 "GPU 오류" 알림 메시지 전송
+                // clientSession.sendMessage(new TextMessage("gpu_error"));
+                clientSession.close(CloseStatus.SERVER_ERROR.withReason("GPU worker disconnected"));
+            } catch (IOException e) {
+                log.error("Error closing client session after GPU disconnect: {}", e.getMessage());
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.capstone.backend.config;
 
-import com.capstone.backend.handler.VoiceWebSocketHandler;
+import com.capstone.backend.handler.ClientWebSocketHandler;
+import com.capstone.backend.handler.GpuWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -12,12 +13,17 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketConfigurer {
 
-    private final VoiceWebSocketHandler voiceWebSocketHandler;
+    private final ClientWebSocketHandler clientWebSocketHandler;
+    private final GpuWebSocketHandler gpuWebSocketHandler;
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        // ws://서버주소/ws/voice 로 들어오는 요청을 voiceWebSocketHandler가 처리
-        registry.addHandler(voiceWebSocketHandler, "/ws/voice")
-                .setAllowedOriginPatterns("*"); // 모든 출처 허용
+        // 1. 고객 전용 엔드포인트
+        registry.addHandler(clientWebSocketHandler, "/ws-client")
+                .setAllowedOriginPatterns("*");
+
+        // 2. GPU 워커 전용 엔드포인트
+        registry.addHandler(gpuWebSocketHandler, "/ws-gpu")
+                .setAllowedOriginPatterns("*");
     }
 }
