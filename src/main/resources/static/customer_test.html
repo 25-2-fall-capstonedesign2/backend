@@ -75,7 +75,7 @@
 
     // 2. (수정) WebSocket 연결 로직 (startCall 내부에서 호출됨)
     function connectToWebSocket(sessionId) {
-        const url = `ws://localhost:8080/ws-client?sessionId=${sessionId}`;
+        const url = `ws://${window.location.host}/ws-client?sessionId=${sessionId}`;
         socket = new WebSocket(url);
         log(`🔌 [WS] 연결 시도: ${url}`);
 

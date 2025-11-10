@@ -34,7 +34,7 @@
             return;
         }
 
-        const url = `ws://localhost:8080/ws-gpu?workerId=${workerId}`;
+        const url = `ws://${window.location.host}/ws-gpu?workerId=${workerId}`;
         socket = new WebSocket(url);
         log(`🔌 연결 시도: ${url}`);
 

@@ -32,6 +32,7 @@ public class CallService {
      */
     public void registerClient(Long callSessionId, WebSocketSession clientSession) {
         sessionToCallId.put(clientSession.getId(), callSessionId);
+        callIdToClientSession.put(callSessionId, clientSession);
 
         WebSocketSession gpuWorker = availableGpuWorkers.poll(); // 대기 중인 GPU 꺼내기
         if (gpuWorker != null) {
@@ -105,6 +106,7 @@ public class CallService {
         Long callSessionId = sessionToCallId.remove(clientSession.getId());
         if (callSessionId == null) return;
 
+        callIdToClientSession.remove(callSessionId);
         pendingClients.remove(callSessionId); // 대기열에 있었다면 제거
 
         WebSocketSession gpuSession = activePairs.remove(callSessionId);
