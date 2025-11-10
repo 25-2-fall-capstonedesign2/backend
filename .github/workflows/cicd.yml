@@ -100,4 +100,4 @@ jobs:
             
             sudo kill $(sudo lsof -t -i:8080) || true 
             
-            nohup java -jar /home/ec2-user/$JAR_NAME > /home/ec2-user/app.log 2>&1 &
+            nohup java -jar /home/ec2-user/build/libs/$JAR_NAME > /home/ec2-user/app.log 2>&1 &
