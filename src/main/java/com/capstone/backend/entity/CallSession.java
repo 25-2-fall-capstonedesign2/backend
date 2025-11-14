@@ -28,6 +28,9 @@ public class CallSession {
     @JoinColumn(name = "user_id", nullable = false) // FK 컬럼 지정
     private User user;
 
+    @Column(name = "participant_name", nullable = false, length = 100)
+    private String participantName;
+
     @CreationTimestamp
     @Column(name = "start_time", nullable = false, updatable = false)
     private LocalDateTime startTime;
@@ -40,8 +43,9 @@ public class CallSession {
     private List<Message> messages = new ArrayList<>();
 
     @Builder
-    public CallSession(User user) {
+    public CallSession(User user, String participantName) {
         this.user = user;
+        this.participantName = participantName;
     }
 
     // (선택) 통화 종료 시 시간을 업데이트하는 편의 메서드
