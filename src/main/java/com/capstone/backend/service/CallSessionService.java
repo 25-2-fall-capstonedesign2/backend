@@ -24,10 +24,11 @@ public class CallSessionService {
      * 새로운 통화 세션을 생성하고 DB에 저장합니다.
      *
      * @param userPhoneNumber (JWT 토큰에서 식별된 사용자의 전화번호)
+     * @param participantName (새로 추가됨: 통화 대상의 이름)
      * @return 생성된 call_session_id
      */
     @Transactional
-    public Long createCallSession(String userPhoneNumber) {
+    public Long createCallSession(String userPhoneNumber, String participantName) {
         // 1. 전화번호를 기반으로 User 엔티티를 조회합니다.
         User user = userRepository.findByPhoneNumber(userPhoneNumber)
                 .orElseThrow(() -> new UsernameNotFoundException("인증된 사용자를 찾을 수 없습니다: " + userPhoneNumber));
@@ -36,6 +37,7 @@ public class CallSessionService {
         //    (startTime은 @CreationTimestamp에 의해 자동 생성됩니다)
         CallSession newSession = CallSession.builder()
                 .user(user)
+                .participantName(participantName)
                 .build();
 
         // 3. DB에 저장합니다.
