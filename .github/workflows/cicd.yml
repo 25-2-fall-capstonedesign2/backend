@@ -102,4 +102,5 @@ jobs:
             sudo docker run -d -p 8080:8080 --name anycall-server \
               -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
               -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e JWT_PASSWORD=${{ secrets.JWT_PASSWORD }} \
               ${{ env.DOCKER_IMAGE_NAME }}:latest
