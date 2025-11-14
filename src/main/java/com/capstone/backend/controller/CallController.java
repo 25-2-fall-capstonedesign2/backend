@@ -1,5 +1,6 @@
 package com.capstone.backend.controller;
 
+import com.capstone.backend.dto.CreateCallRequestDto;
 import com.capstone.backend.dto.CreateCallResponseDto;
 import com.capstone.backend.service.CallService;
 import com.capstone.backend.service.CallSessionService;
@@ -8,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.security.Principal;
@@ -25,16 +27,26 @@ public class CallController {
      * 인증된 사용자의 새 통화 세션을 생성하고 세션 ID를 반환합니다.
      *
      * @param principal Spring Security가 JWT 토큰을 해석하여 넣어주는 사용자 정보
+     * @param requestDto Flutter가 보낸 JSON ({"participantName": "선택한이름"})
      * @return {"callSessionId": 123} 형태의 JSON 응답
      */
     @PostMapping("/start")
-    public ResponseEntity<CreateCallResponseDto> createCallSession(Principal principal) {
+    public ResponseEntity<CreateCallResponseDto> createCallSession(
+            Principal principal,
+            @RequestBody CreateCallRequestDto requestDto
+    ) {
 
         // 1. Spring Security가 주입해준 Principal에서 사용자의 식별자(username, 즉 전화번호)를 가져옵니다.
         String userPhoneNumber = principal.getName();
 
+        String participantName = requestDto.getParticipantName();
+        if (participantName == null || participantName.isBlank()) {
+            // (보안/안정성) 이름이 비어있으면 400 Bad Request 응답
+            return ResponseEntity.badRequest().build();
+        }
+
         // 2. CallSessionService를 호출하여 세션을 생성합니다.
-        Long sessionId = callSessionService.createCallSession(userPhoneNumber);
+        Long sessionId = callSessionService.createCallSession(userPhoneNumber,  participantName);
 
         // 3. DTO에 담아 200 OK 응답을 반환합니다.
         return ResponseEntity.ok(new CreateCallResponseDto(sessionId));
