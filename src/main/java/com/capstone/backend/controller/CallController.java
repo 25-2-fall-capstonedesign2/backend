@@ -52,9 +52,6 @@ public class CallController {
         return ResponseEntity.ok(new CreateCallResponseDto(sessionId));
     }
 
-    // TODO:
-    // 여기에 2단계에서 제안한 [POST /api/calls/{callSessionId}/end] (통화 종료) API도
-    // 나중에 추가하면 좋습니다.
     /**
      * [POST /api/calls/{callSessionId}/hangup]
      * Flutter 앱에서 '통화 종료' 시 호출하는 API입니다.
