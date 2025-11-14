@@ -13,6 +13,11 @@ on:
   # 'main' 브랜치로 pull request가 생성되었을 때 (CI만 실행)
   pull_request:
     branches: [ "main" ]
+# -----------------------------------------------
+# (추가) Docker Hub 이미지 이름을 위한 환경 변수
+# -----------------------------------------------
+env:
+  DOCKER_IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/anycall-backend
 
 jobs:
   # ===============================================
@@ -43,13 +48,23 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew build
 
-      # 5. (CD를 위해 추가) 빌드된 JAR 파일을 Artifact로 업로드
-      # deploy 잡에서 이 파일을 다운로드하여 EC2로 전송합니다.
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      # 5. (신규) Docker Hub 로그인
+      # GitHub Secrets에 DOCKER_USERNAME, DOCKER_PASSWORD 등록 필요
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          name: app-jar
-          path: build/libs/*.jar # build/libs/ 폴더 아래의 .jar 파일을 업로드
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # 6. (신규) Docker 이미지 빌드 및 푸시
+      # Dockerfile을 이용해 이미지를 빌드하고 Docker Hub에 푸시
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: . # Dockerfile이 있는 위치
+          file: ./Dockerfile # Dockerfile 경로
+          push: true # Docker Hub로 푸시
+          tags: ${{ env.DOCKER_IMAGE_NAME }}:latest
 
   # ===============================================
   # 2. CD (Deploy) Job
@@ -64,27 +79,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. (준비) build 잡에서 업로드한 JAR 파일을 다운로드
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-jar
-          path: ./build/libs # 다운로드 받을 위치
-
-      # 2. (전송) SCP를 사용해 JAR 파일을 EC2 인스턴스로 복사
-      # appleboy/scp-action 액션을 사용합니다.
-      - name: SCP JAR to EC2
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: 22
-          source: "build/libs/*.jar"
-          target: "/home/ec2-user/" # Amazon Linux의 기본 사용자 홈 디렉터리
-
-      # 3. (실행) SSH를 사용해 EC2에 접속하여 서버를 재시작
-      # appleboy/ssh-action 액션을 사용합니다.
+      # (변경) SSH를 사용해 EC2에 접속하여 도커 컨테이너 실행
       - name: Deploy to EC2
         uses: appleboy/ssh-action@master
         with:
@@ -93,11 +88,18 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            export DB_USERNAME=${{ secrets.DB_USERNAME }}
-            export DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            
-            JAR_NAME=$(ls /home/ec2-user/ | grep '\.jar$' | grep -v 'plain' | head -n 1)
-            
-            sudo kill $(sudo lsof -t -i:8080) || true 
-            
-            nohup java -jar /home/ec2-user/$JAR_NAME > /home/ec2-user/app.log 2>&1 &
+            # 1. Docker Hub에서 최신 이미지 가져오기
+            sudo docker pull ${{ env.DOCKER_IMAGE_NAME }}:latest
+
+            # 2. (에러 무시) 기존에 실행 중이던 컨테이너 중지
+            sudo docker stop anycall-server || true
+
+            # 3. (에러 무시) 기존 컨테이너 삭제
+            sudo docker rm anycall-server || true
+
+            # 4. DB 환경변수와 함께 새 컨테이너 실행
+            # (DB_USERNAME, DB_PASSWORD는 GitHub Secrets에 등록 필요)
+            sudo docker run -d -p 8080:8080 --name anycall-server \
+              -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              ${{ env.DOCKER_IMAGE_NAME }}:latest

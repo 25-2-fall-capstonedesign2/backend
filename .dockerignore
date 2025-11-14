@@ -1,0 +1,7 @@
+# .dockerignore (간소화 버전)
+.git
+.github
+.idea
+.vscode
+src/
+gradle/
