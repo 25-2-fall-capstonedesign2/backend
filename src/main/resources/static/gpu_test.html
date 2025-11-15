@@ -7,12 +7,18 @@
 <body>
 <h2>GPU 워커 WebSocket 테스트 (/ws-gpu)</h2>
 <div>
-    <label for="workerId">Worker ID:</label>
-    <input type="text" id="workerId" value="gpu-worker-001"> <button onclick="connect()">연결 (대기 풀 진입)</button>
-    <button onclick="disconnect()">연결 종료</button>
+    <button onclick="connect()">① 연결 (대기 풀 진입)</button>
+    <button onclick="disconnect()">② 연결 종료</button>
+</div>
+<hr>
+<div>
+    <h3>전송할 텍스트 내용:</h3>
+    <input type="text" id="textContent" value="안녕하세요, AI입니다." style="width: 300px;">
 </div>
 <div>
-    <button onclick="sendTestData()">AI 응답(GPU->고객) 전송</button>
+    <button onclick="sendAudioChunk()">③ (0x01) AI 음성 전송 (고객 전달용)</button>
+    <button onclick="sendUserTranscript()">④ (0x02) 사용자 텍스트 전송 (DB저장용)</button>
+    <button onclick="sendAiTranscript()">⑤ (0x03) AI 텍스트 전송 (DB저장용)</button>
 </div>
 <div>
     <h3>로그:</h3>
@@ -21,68 +27,95 @@
 
 <script>
     let socket = null;
+    const textEncoder = new TextEncoder(); // 텍스트를 UTF-8 바이트로 변환
 
     function log(message) {
-        const logEl = document.getElementById('log');
-        logEl.textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
+        document.getElementById('log').textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
     }
 
     function connect() {
-        const workerId = document.getElementById('workerId').value;
-        if (!workerId) {
-            log('⚠️ Worker ID를 입력하세요.');
-            return;
-        }
-
-        const url = `ws://${window.location.host}/ws-gpu?workerId=${workerId}`;
+        if (socket) return;
+        // (참고) /ws-gpu 엔드포인트는 GpuWebSocketHandler가 처리합니다.
+        const url = `ws://${window.location.host}/ws-gpu`;
         socket = new WebSocket(url);
+        socket.binaryType = 'arraybuffer'; // 수신 타입을 ArrayBuffer로
         log(`🔌 연결 시도: ${url}`);
 
-        socket.onopen = function(event) {
-            log('✅ WebSocket 연결 성공 (GPU 워커)');
-        };
+        socket.onopen = (event) => log('✅ WebSocket 연결 성공 (GPU 워커)');
 
-        socket.onmessage = function(event) {
-            if (event.data instanceof Blob) {
-                event.data.arrayBuffer().then(buffer => {
-                    const view = new Uint8Array(buffer);
-                    log('📨 (고객->GPU) 바이너리 메시지 수신: ' + view.length + ' bytes');
-                    log('   데이터 샘플: [' + Array.from(view.slice(0, 10)).join(', ') + '...]');
-                });
+        socket.onmessage = (event) => {
+            // CallService가 고객의 '순수 음성' 데이터를 그대로 전달합니다.
+            if (event.data instanceof ArrayBuffer) {
+                const view = new Uint8Array(event.data);
+                log(`📨 (고객->GPU) '순수 음성' 수신: ${view.length} bytes (헤더 없음)`);
+                log(`   ㄴ 데이터 샘플: [${Array.from(view.slice(0, 10)).join(', ')}]`);
             }
         };
 
-        socket.onerror = function(error) {
-            log('❌ 에러 발생: ' + error);
-        };
-
-        socket.onclose = function(event) {
-            log('🔌 연결 종료: ' + event.code + ' - ' + event.reason);
+        socket.onerror = (error) => log('❌ 에러 발생: ' + JSON.stringify(error));
+        socket.onclose = (event) => {
+            log(`🔌 연결 종료: ${event.code} - ${event.reason}`);
+            socket = null;
         };
     }
 
     function disconnect() {
         if (socket) {
-            socket.close();
+            socket.close(1000, "Worker disconnected");
             socket = null;
         }
     }
 
-    function sendTestData() {
+    // 1바이트 헤더와 데이터 본문을 합치는 헬퍼 함수
+    function createMessage(headerByte, dataBytes) {
+        const header = new Uint8Array([headerByte]);
+        const combined = new Uint8Array(header.length + dataBytes.length);
+        combined.set(header, 0);
+        combined.set(dataBytes, header.length);
+        return combined;
+    }
+
+    // ③ (0x01) AI 음성 전송
+    function sendAudioChunk() {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
             log('⚠️ 먼저 연결하세요');
             return;
         }
+        // 1023바이트 랜덤 오디오 데이터 생성
+        const audioData = new Uint8Array(1023);
+        for (let i = 0; i < audioData.length; i++) audioData[i] = Math.floor(Math.random() * 256);
 
-        // AI 응답 데이터 (G로 시작)
-        const data = new Uint8Array(1024);
-        data[0] = 71; // 'G'
-        for (let i = 1; i < data.length; i++) {
-            data[i] = Math.floor(Math.random() * 256);
+        const message = createMessage(0x01, audioData);
+        socket.send(message.buffer);
+        log(`📤 (GPU->서버) 0x01: AI 음성 데이터 전송 (${message.length} bytes)`);
+    }
+
+    // ④ (0x02) 사용자 텍스트 전송
+    function sendUserTranscript() {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            log('⚠️ 먼저 연결하세요');
+            return;
         }
+        const text = document.getElementById('textContent').value + " (USER)";
+        const textData = textEncoder.encode(text); // 텍스트를 UTF-8 바이트로
 
-        socket.send(data.buffer);
-        log('📤 (GPU->고객) AI 응답 전송: ' + data.length + ' bytes');
+        const message = createMessage(0x02, textData);
+        socket.send(message.buffer);
+        log(`📤 (GPU->서버) 0x02: 사용자 텍스트 전송: "${text}"`);
+    }
+
+    // ⑤ (0x03) AI 텍스트 전송
+    function sendAiTranscript() {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            log('⚠️ 먼저 연결하세요');
+            return;
+        }
+        const text = document.getElementById('textContent').value + " (AI)";
+        const textData = textEncoder.encode(text); // 텍스트를 UTF-8 바이트로
+
+        const message = createMessage(0x03, textData);
+        socket.send(message.buffer);
+        log(`📤 (GPU->서버) 0x03: AI 텍스트 전송: "${text}"`);
     }
 </script>
 </body>

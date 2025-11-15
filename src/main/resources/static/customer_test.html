@@ -11,11 +11,15 @@
     <label for="jwtToken">JWT 토큰:</label>
     <input type="text" id="jwtToken" value="여기에_로그인_후_받은_JWT_토큰을_붙여넣으세요" style="width: 400px;">
 </div>
+<div>
+    <label for="participantName">통화 대상:</label>
+    <input type="text" id="participantName" value="AI-John" style="width: 150px;">
+</div>
 <hr>
 <div>
-    <button onclick="startCall()">① 통화 시작 (API 호출 + WS 연결)</button>
-    <button onclick="hangupCall()">② 통화 종료 (API 호출 + WS 종료)</button>
-    <button onclick="sendTestData()">③ 음성 데이터 전송</button>
+    <button onclick="startCall()">① 통화 시작 (API + WS)</button>
+    <button onclick="hangupCall()">② 통화 종료 (API + WS)</button>
+    <button onclick="sendAudioData()">③ '순수 음성' 데이터 전송 (헤더 없음)</button>
 </div>
 <div>
     <h3>로그:</h3>
@@ -28,11 +32,10 @@
     let currentToken = null;
 
     function log(message) {
-        const logEl = document.getElementById('log');
-        logEl.textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
+        document.getElementById('log').textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
     }
 
-    // 1. (신규) '통화 시작' 버튼 클릭 시
+    // 1. '통화 시작' - participantName을 JSON으로 전송
     async function startCall() {
         if (socket) {
             log('⚠️ 이미 통화가 연결되어 있습니다.');
@@ -40,20 +43,31 @@
         }
 
         currentToken = document.getElementById('jwtToken').value;
-        if (!currentToken || currentToken === "여기에_로그인_후_받은_JWT_토큰을_붙여넣으세요") {
+        const participantName = document.getElementById('participantName').value;
+
+        if (!currentToken || currentToken.includes("붙여넣으세요")) {
             log('❌ JWT 토큰을 입력하세요.');
+            return;
+        }
+        if (!participantName) {
+            log('❌ 통화 대상을 입력하세요.');
             return;
         }
 
         try {
             log('📞 [API] /api/calls/start 호출 시도...');
+            log(`   ㄴ Body: {"participantName": "${participantName}"}`);
 
-            // 1-1. REST API를 호출하여 세션 ID를 발급받습니다.
+            // 1-1. REST API 호출 (JSON Body 추가)
             const response = await fetch('/api/calls/start', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${currentToken}`
-                }
+                    'Authorization': `Bearer ${currentToken}`,
+                    'Content-Type': 'application/json' // JSON 전송 명시
+                },
+                body: JSON.stringify({ // 우리가 수정한 DTO에 맞게 JSON 전송
+                    participantName: participantName
+                })
             });
 
             if (!response.ok) {
@@ -65,7 +79,7 @@
 
             log(`✅ [API] 세션 ID 발급 성공: ${currentSessionId}`);
 
-            // 1-2. 발급받은 ID로 WebSocket 연결을 시작합니다.
+            // 1-2. 발급받은 ID로 WebSocket 연결
             connectToWebSocket(currentSessionId);
 
         } catch (error) {
@@ -73,90 +87,70 @@
         }
     }
 
-    // 2. (수정) WebSocket 연결 로직 (startCall 내부에서 호출됨)
+    // 2. WebSocket 연결 로직
     function connectToWebSocket(sessionId) {
+        // (참고) /ws-client 엔드포인트는 ClientWebSocketHandler가 처리합니다.
         const url = `ws://${window.location.host}/ws-client?sessionId=${sessionId}`;
         socket = new WebSocket(url);
+        socket.binaryType = 'arraybuffer'; // 수신 타입을 ArrayBuffer로
         log(`🔌 [WS] 연결 시도: ${url}`);
 
-        socket.onopen = function(event) {
-            log('✅ [WS] WebSocket 연결 성공 (고객)');
-        };
+        socket.onopen = (event) => log('✅ [WS] WebSocket 연결 성공 (고객)');
 
-        socket.onmessage = function(event) {
-            if (event.data instanceof Blob) {
-                event.data.arrayBuffer().then(buffer => {
-                    const view = new Uint8Array(buffer);
-                    log('📨 [WS] (GPU->고객) 바이너리 메시지 수신: ' + view.length + ' bytes');
-                    log('   데이터 샘플: [' + Array.from(view.slice(0, 10)).join(', ') + '...]');
-                });
+        socket.onmessage = (event) => {
+            // 서버(GpuWebSocketHandler)가 0x01(오디오)만 필터링해서 보냅니다.
+            if (event.data instanceof ArrayBuffer) {
+                const view = new Uint8Array(event.data);
+                log(`📨 [WS] (GPU->고객) 'AI 음성' 수신 (0x01 타입 추정): ${view.length} bytes`);
+                log(`   ㄴ 데이터 샘플: [${Array.from(view.slice(0, 10)).join(', ')}]`);
             } else {
                 log(`📨 [WS] (서버->고객) 텍스트 메시지 수신: ${event.data}`);
             }
         };
 
-        socket.onerror = function(error) {
-            log('❌ [WS] 에러 발생: ' + error);
-        };
-
-        socket.onclose = function(event) {
+        socket.onerror = (error) => log('❌ [WS] 에러 발생: ' + JSON.stringify(error));
+        socket.onclose = (event) => {
             log(`🔌 [WS] 연결 종료: ${event.code} - ${event.reason}`);
             socket = null;
             currentSessionId = null;
         };
     }
 
-    // 3. (신규) '통화 종료' 버튼 클릭 시
+    // 3. '통화 종료'
     async function hangupCall() {
         if (!socket || !currentSessionId) {
             log('⚠️ 연결된 통화가 없습니다.');
             return;
         }
-
         try {
             log(`📞 [API] /api/calls/${currentSessionId}/hangup 호출 시도...`);
-
-            // 3-1. REST API로 통화 종료를 서버에 알립니다.
             const response = await fetch(`/api/calls/${currentSessionId}/hangup`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${currentToken}`
-                }
+                headers: { 'Authorization': `Bearer ${currentToken}` }
             });
-
-            if (!response.ok) {
-                throw new Error(`API 호출 실패: ${response.status}`);
-            }
-
+            if (!response.ok) throw new Error(`API 호출 실패: ${response.status}`);
             log('✅ [API] 통화 종료 요청 성공');
-
         } catch (error) {
             log(`❌ [API] 통화 종료 실패: ${error.message}`);
         } finally {
-            // 3-2. API 성공 여부와 관계없이 로컬 WebSocket 연결을 닫습니다.
-            if (socket) {
-                socket.close(1000, "User ended call"); // 1000 = Normal Closure
-            }
+            if (socket) socket.close(1000, "User ended call");
             socket = null;
             currentSessionId = null;
         }
     }
 
-    // 4. (동일) 음성 데이터 전송 로직
-    function sendTestData() {
+    // 4. '순수 음성' 데이터 전송
+    function sendAudioData() {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
             log('⚠️ 먼저 통화를 시작하세요');
             return;
         }
-
+        // 프로토콜 약속: 고객은 헤더 없는 '순수 음성' 데이터만 보냅니다.
         const data = new Uint8Array(1024);
-        data[0] = 67; // 'C' (Client)
-        for (let i = 1; i < data.length; i++) {
-            data[i] = Math.floor(Math.random() * 256);
-        }
+        for (let i = 0; i < data.length; i++) data[i] = i % 256;
 
         socket.send(data.buffer);
-        log('📤 [WS] (고객->GPU) 음성 데이터 전송: ' + data.length + ' bytes');
+        log(`📤 [WS] (고객->GPU) '순수 음성' 데이터 전송: ${data.length} bytes (헤더 없음)`);
     }
 </script>
 </body>
