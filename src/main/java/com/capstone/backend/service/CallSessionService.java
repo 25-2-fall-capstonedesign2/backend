@@ -58,7 +58,7 @@ public class CallSessionService {
     public void endCallSession(Long callSessionId, String userPhoneNumber) {
         // 1. DB에서 세션 조회
         CallSession callSession = callSessionRepository.findById(callSessionId)
-                .orElseThrow(() -> new RuntimeException("통화 세션을 찾을 수 없습니다: " + callSessionId));
+                .orElseThrow(() -> new EntityNotFoundException("통화 세션을 찾을 수 없습니다: " + callSessionId));
 
         // 2. (보안) 이 통화가 요청자의 통화가 맞는지 확인
         String ownerPhoneNumber = callSession.getUser().getPhoneNumber();
