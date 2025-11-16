@@ -4,6 +4,7 @@ import com.capstone.backend.entity.CallSession;
 import com.capstone.backend.entity.User;
 import com.capstone.backend.repository.CallSessionRepository;
 import com.capstone.backend.repository.UserRepository;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -69,7 +70,7 @@ public class CallSessionService {
         // 3. (중복 방지) 이미 종료되었는지 확인
         if (callSession.getEndTime() != null) {
             log.warn("Session {} is already ended.", callSessionId);
-            return; // 이미 처리됨
+            throw new EntityNotFoundException("이미 종료되었거나 존재하지 않는 세션입니다."); //404 error 반환
         }
 
         // 4. 종료 시간 기록
