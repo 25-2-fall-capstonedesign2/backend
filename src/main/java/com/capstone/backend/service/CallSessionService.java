@@ -41,6 +41,7 @@ public class CallSessionService {
         VoiceProfile voiceProfile = voiceProfileRepository.findById(voiceProfileId)
                 .orElseThrow(() -> new EntityNotFoundException("Voice profile not found: " + voiceProfileId));
 
+        log.info("🔍 [Debug] User ID: {}, VoiceProfile Owner ID: {}", user.getId(), voiceProfile.getUser().getId());
         // 3. [추가됨] 보안 검증: 내 목소리 프로필이 맞는지 확인 (남의 것 사용 방지)
         if (!voiceProfile.getUser().getId().equals(user.getId())) {
             throw new AccessDeniedException("이 목소리 프로필에 대한 접근 권한이 없습니다.");
