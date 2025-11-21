@@ -10,6 +10,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.ContentDisposition; // [추가]
+import java.nio.charset.StandardCharsets; // [추가]
 
 import java.io.IOException;
 
@@ -53,9 +55,14 @@ public class VoiceProfileController {
         VoiceProfile voiceProfile = voiceProfileRepository.findById(voiceProfileId)
                 .orElseThrow(() -> new RuntimeException("Profile not found"));
 
+        // 한글 파일명 깨짐 방지를 위해 ContentDisposition 빌더 사용 (RFC 5987 표준 지원)
+        ContentDisposition contentDisposition = ContentDisposition.builder("attachment")
+                .filename(voiceProfile.getProfileName() + ".mp3", StandardCharsets.UTF_8)
+                .build();
+
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + voiceProfile.getProfileName() + ".wav\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM) // 이진 데이터임을 명시
+                .contentType(MediaType.parseMediaType("audio/mpeg"))
                 .body(voiceProfile.getVoiceData());
     }
 
