@@ -9,12 +9,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.ContentDisposition; // [추가]
 import java.nio.charset.StandardCharsets; // [추가]
 
 import java.io.IOException;
+import java.security.Principal;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/voice-profiles")
@@ -28,12 +32,12 @@ public class VoiceProfileController {
     // 앱에서 파일을 업로드하면 DB에 저장하고 ID를 반환합니다.
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Long> uploadVoiceProfile(
-            @RequestParam("userId") Long userId,
+            Principal principal,
             @RequestParam("profileName") String profileName,
             @RequestParam("file") MultipartFile file
     ) throws IOException {
-
-        User user = userRepository.findById(userId)
+        String userPhoneNumber = principal.getName();
+        User user = userRepository.findByPhoneNumber(userPhoneNumber)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         VoiceProfile voiceProfile = VoiceProfile.builder()
@@ -68,15 +72,18 @@ public class VoiceProfileController {
     }
 
     // 3. [앱용] 내 목소리 목록 조회 API (누락된 부분 추가)
-    @GetMapping("/user/{userId}")
-    public ResponseEntity<java.util.List<String>> getUserVoiceProfiles(@PathVariable Long userId) {
-        // repository를 통해 해당 유저의 모든 프로필을 가져옴
-        java.util.List<VoiceProfile> profiles = voiceProfileRepository.findAllByUserId(userId);
+    @GetMapping("/me")
+    public ResponseEntity<List<VoiceProfileResponseDto>> getUserVoiceProfiles(Principal principal) {
+        String userPhoneNumber = principal.getName();
+        User user = userRepository.findByPhoneNumber(userPhoneNumber)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        // "ID: 이름" 형태의 문자열 리스트로 변환하여 반환
-        java.util.List<String> result = profiles.stream()
-                .map(p -> p.getId() + ": " + p.getProfileName())
-                .collect(java.util.stream.Collectors.toList());
+        // user.getId()를 사용하여 조회
+        List<VoiceProfile> profiles = voiceProfileRepository.findAllByUserId(user.getId());
+
+        List<VoiceProfileResponseDto> result = profiles.stream()
+                .map(VoiceProfileResponseDto::new)
+                .collect(Collectors.toList());
 
         return ResponseEntity.ok(result);
     }
