@@ -40,6 +40,9 @@ public class User {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<CallSession> callSessions = new ArrayList<>();
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<VoiceProfile> voiceProfiles = new ArrayList<>();
+
     @Builder
     public User(String phoneNumber, String password, String displayName) {
         this.phoneNumber = phoneNumber;

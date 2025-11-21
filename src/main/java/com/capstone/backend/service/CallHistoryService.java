@@ -6,6 +6,7 @@ import com.capstone.backend.entity.User;
 import com.capstone.backend.repository.CallSessionRepository;
 import com.capstone.backend.repository.MessageRepository;
 import com.capstone.backend.repository.UserRepository;
+import com.capstone.backend.repository.VoiceProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
@@ -28,8 +29,8 @@ public class CallHistoryService {
     public List<String> getParticipantList(String userPhoneNumber) {
         User user = findUserByPhoneNumber(userPhoneNumber);
 
-        // (3단계에서 CallSessionRepository에 추가할 메서드)
-        return callSessionRepository.findDistinctParticipantNameByUser(user);
+        // [수정됨] findDistinctParticipantNameByUser -> findDistinctProfileNamesByUser
+        return callSessionRepository.findDistinctProfileNamesByUser(user);
     }
 
     /**
@@ -38,16 +39,15 @@ public class CallHistoryService {
     public List<MessageDto> getMessagesByParticipant(String userPhoneNumber, String participantName) {
         User user = findUserByPhoneNumber(userPhoneNumber);
 
-        // 1. 이 사용자와 이 참가자 간의 '모든' 통화 세션(CallSession)을 찾습니다.
-        // (3단계에서 CallSessionRepository에 추가할 메서드)
+        // [수정됨] findAllByUserAndParticipantName -> findAllByUserAndVoiceProfile_ProfileName
+        // 이제 'participantName' 변수는 실제로는 'VoiceProfile의 profileName'을 의미하게 됩니다.
         List<CallSession> sessions = callSessionRepository
-                .findAllByUserAndParticipantName(user, participantName);
+                .findAllByUserAndVoiceProfile_ProfileName(user, participantName);
 
-        // 2. 이 세션들에 속한 '모든' 메시지를 시간순으로 찾습니다.
-        // (4단계에서 MessageRepository에 추가할 메서드)
+        // 이 세션들에 속한 '모든' 메시지를 시간순으로 찾습니다.
         return messageRepository.findAllByCallSessionInOrderByTimestampAsc(sessions)
                 .stream()
-                .map(MessageDto::new) // Message 엔티티 -> MessageDto로 변환
+                .map(MessageDto::new)
                 .collect(Collectors.toList());
     }
 

@@ -2,8 +2,10 @@ package com.capstone.backend.service;
 
 import com.capstone.backend.entity.CallSession;
 import com.capstone.backend.entity.User;
+import com.capstone.backend.entity.VoiceProfile;
 import com.capstone.backend.repository.CallSessionRepository;
 import com.capstone.backend.repository.UserRepository;
+import com.capstone.backend.repository.VoiceProfileRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,25 +22,29 @@ public class CallSessionService {
 
     private final CallSessionRepository callSessionRepository;
     private final UserRepository userRepository;
+    private final VoiceProfileRepository voiceProfileRepository;
 
     /**
      * 새로운 통화 세션을 생성하고 DB에 저장합니다.
      *
      * @param userPhoneNumber (JWT 토큰에서 식별된 사용자의 전화번호)
-     * @param participantName (새로 추가됨: 통화 대상의 이름)
+     * @param profileName (새로 추가됨: 통화 대상의 이름)
      * @return 생성된 call_session_id
      */
     @Transactional
-    public Long createCallSession(String userPhoneNumber, String participantName) {
+    public Long createCallSession(String userPhoneNumber, String profileName) {
         // 1. 전화번호를 기반으로 User 엔티티를 조회합니다.
         User user = userRepository.findByPhoneNumber(userPhoneNumber)
                 .orElseThrow(() -> new UsernameNotFoundException("인증된 사용자를 찾을 수 없습니다: " + userPhoneNumber));
+
+        VoiceProfile voiceProfile = voiceProfileRepository.findByUserAndProfileName(user, profileName)
+                .orElseThrow(() -> new EntityNotFoundException("해당 이름의 목소리 프로필을 찾을 수 없습니다: " + profileName));
 
         // 2. 새 CallSession 객체를 생성합니다.
         //    (startTime은 @CreationTimestamp에 의해 자동 생성됩니다)
         CallSession newSession = CallSession.builder()
                 .user(user)
-                .participantName(participantName)
+                .voiceProfile(voiceProfile)
                 .build();
 
         // 3. DB에 저장합니다.
@@ -58,7 +64,7 @@ public class CallSessionService {
     public void endCallSession(Long callSessionId, String userPhoneNumber) {
         // 1. DB에서 세션 조회
         CallSession callSession = callSessionRepository.findById(callSessionId)
-                .orElseThrow(() -> new RuntimeException("통화 세션을 찾을 수 없습니다: " + callSessionId));
+                .orElseThrow(() -> new EntityNotFoundException("통화 세션을 찾을 수 없습니다: " + callSessionId));
 
         // 2. (보안) 이 통화가 요청자의 통화가 맞는지 확인
         String ownerPhoneNumber = callSession.getUser().getPhoneNumber();
