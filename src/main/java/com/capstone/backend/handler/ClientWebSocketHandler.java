@@ -34,12 +34,12 @@ public class ClientWebSocketHandler extends BinaryWebSocketHandler {
 
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
-        callService.forwardToGpu(session, message);
+        callService.forwardAudioToGpu(session, message);
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        callService.disconnectClient(session);
+        callService.clientDisconnected(session);
         log.info("Client connection closed: Session ID = {}, Status = {}", session.getId(), status);
     }
 

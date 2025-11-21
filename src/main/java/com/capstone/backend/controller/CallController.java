@@ -30,25 +30,18 @@ public class CallController {
      * @param requestDto Flutter가 보낸 JSON ({"participantName": "선택한이름"})
      * @return {"callSessionId": 123} 형태의 JSON 응답
      */
-    @PostMapping("/start")
-    public ResponseEntity<CreateCallResponseDto> createCallSession(
-            Principal principal,
-            @RequestBody CreateCallRequestDto requestDto
-    ) {
 
-        // 1. Spring Security가 주입해준 Principal에서 사용자의 식별자(username, 즉 전화번호)를 가져옵니다.
+    @PostMapping("/start")
+    public ResponseEntity<CreateCallResponseDto> startCall(
+            Principal principal,
+            @RequestBody CreateCallRequestDto requestDto) {
+
         String userPhoneNumber = principal.getName();
 
-        String participantName = requestDto.getParticipantName();
-        if (participantName == null || participantName.isBlank()) {
-            // (보안/안정성) 이름이 비어있으면 400 Bad Request 응답
-            return ResponseEntity.badRequest().build();
-        }
+        // 1. DB에 세션만 생성 (GPU 매칭 X)
+        Long sessionId = callSessionService.createCallSession(userPhoneNumber, requestDto.getVoiceProfileId());
 
-        // 2. CallSessionService를 호출하여 세션을 생성합니다.
-        Long sessionId = callSessionService.createCallSession(userPhoneNumber,  participantName);
-
-        // 3. DTO에 담아 200 OK 응답을 반환합니다.
+        // 2. 생성된 ID 반환 -> 앱은 이걸 받고 WebSocket 연결 시도함
         return ResponseEntity.ok(new CreateCallResponseDto(sessionId));
     }
 
@@ -69,10 +62,10 @@ public class CallController {
         String userPhoneNumber = principal.getName();
 
         // 1. (DB 작업) DB에 end_time 기록 및 권한 확인
-        callSessionService.endCallSession(callSessionId, userPhoneNumber);
+        callSessionService.endCallSession(callSessionId);
 
         // 2. (실시간 작업) WebSocket 연결 강제 종료 및 정리
-        callService.forceDisconnectSession(callSessionId);
+        callService.forceDisconnect(callSessionId);
 
         return ResponseEntity.ok().build();
     }

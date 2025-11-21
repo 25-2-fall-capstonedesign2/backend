@@ -64,7 +64,7 @@ public class GpuWebSocketHandler extends BinaryWebSocketHandler {
         switch (messageType) {
             case 0x01: // AI 오디오 청크
                 // 헤더가 제거된 '순수 오디오 데이터'만 클라이언트로 전달
-                callService.forwardToClient(session, new BinaryMessage(dataBytes));
+                callService.forwardAudioToClient(session, new BinaryMessage(dataBytes));
                 break;
 
             case 0x02: // 사용자 발화 텍스트 (GPU가 받아쓴 USER 텍스트)
@@ -88,7 +88,7 @@ public class GpuWebSocketHandler extends BinaryWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        callService.disconnectGpu(session);
+        callService.gpuDisconnected(session);
         log.info("GPU worker connection closed: Session ID = {}, Status = {}", session.getId(), status);
     }
 }
