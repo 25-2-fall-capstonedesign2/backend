@@ -8,5 +8,5 @@ import lombok.NoArgsConstructor;
 public class CreateCallRequestDto {
 
     // Flutter에서 {"participantName": "Karina"} 이렇게 보낼 겁니다.
-    private String participantName;
+    private Long voiceProfileId;
 }
