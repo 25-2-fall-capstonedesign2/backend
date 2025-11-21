@@ -40,6 +40,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers("/api/auth/**", "/ws-client/**","/ws-gpu/**").permitAll() // '/api/auth/' 하위 경로는 인증 없이 접근 허용
                         .requestMatchers("/customer_test.html", "/gpu_test.html").permitAll()
+                        .requestMatchers("/api/voice-profiles/me").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/voice-profiles/**").permitAll()
                         .anyRequest().authenticated() // 그 외 모든 요청은 인증 필요
                 )
