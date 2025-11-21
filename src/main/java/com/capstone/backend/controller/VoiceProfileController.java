@@ -58,4 +58,18 @@ public class VoiceProfileController {
                 .contentType(MediaType.APPLICATION_OCTET_STREAM) // 이진 데이터임을 명시
                 .body(voiceProfile.getVoiceData());
     }
+
+    // 3. [앱용] 내 목소리 목록 조회 API (누락된 부분 추가)
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<java.util.List<String>> getUserVoiceProfiles(@PathVariable Long userId) {
+        // repository를 통해 해당 유저의 모든 프로필을 가져옴
+        java.util.List<VoiceProfile> profiles = voiceProfileRepository.findAllByUserId(userId);
+
+        // "ID: 이름" 형태의 문자열 리스트로 변환하여 반환
+        java.util.List<String> result = profiles.stream()
+                .map(p -> p.getId() + ": " + p.getProfileName())
+                .collect(java.util.stream.Collectors.toList());
+
+        return ResponseEntity.ok(result);
+    }
 }
