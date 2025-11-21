@@ -147,7 +147,7 @@
     }
 
     function connectWebSocket(sessionId) {
-        const wsUrl = `${getWsUrl()}/ws-client?callSessionId=${sessionId}`;
+        const wsUrl = `${getWsUrl()}/ws-client?sessionId=${sessionId}`;
         log(`WS 연결 시도...`);
 
         websocket = new WebSocket(wsUrl);
