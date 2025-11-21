@@ -30,13 +30,13 @@ public class CallHistoryController {
     }
 
     /**
-     * [GET /api/v1/history/messages?participantName=...]
+     * [GET /api/v1/history/messages?profileName=...]
      * 특정 통화 대상과의 모든 메시지 내역 (시간순)
      */
     @GetMapping("/messages") // 3. 메시지 내역 API 엔드포인트
     public ResponseEntity<List<MessageDto>> getMessageHistory(
             Principal principal,
-            @RequestParam("participantName") String participantName
+            @RequestParam("profileName") String participantName
     ) {
         String userPhoneNumber = principal.getName();
         List<MessageDto> messages = callHistoryService.getMessagesByParticipant(userPhoneNumber, participantName);

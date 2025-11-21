@@ -1,5 +1,6 @@
 package com.capstone.backend.controller;
 
+import com.capstone.backend.dto.VoiceProfileResponseDto;
 import com.capstone.backend.entity.User;
 import com.capstone.backend.entity.VoiceProfile;
 import com.capstone.backend.repository.UserRepository;
@@ -61,7 +62,7 @@ public class VoiceProfileController {
                 .build();
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + voiceProfile.getProfileName() + ".wav\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
                 .contentType(MediaType.parseMediaType("audio/mpeg"))
                 .body(voiceProfile.getVoiceData());
     }
@@ -78,5 +79,15 @@ public class VoiceProfileController {
                 .collect(java.util.stream.Collectors.toList());
 
         return ResponseEntity.ok(result);
+    }
+
+    // 4. [GPU/앱용] 목소리 정보(메타데이터) 조회 API (신규 추가)
+    // 파일 내용 없이 ID, 이름, 생성일만 가볍게 반환합니다.
+    @GetMapping("/{voiceProfileId}")
+    public ResponseEntity<VoiceProfileResponseDto> getVoiceProfileInfo(@PathVariable Long voiceProfileId) {
+        VoiceProfile voiceProfile = voiceProfileRepository.findById(voiceProfileId)
+                .orElseThrow(() -> new RuntimeException("Profile not found"));
+
+        return ResponseEntity.ok(new VoiceProfileResponseDto(voiceProfile));
     }
 }
