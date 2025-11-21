@@ -3,6 +3,7 @@ package com.capstone.backend.controller;
 import com.capstone.backend.dto.CreateCallRequestDto;
 import com.capstone.backend.dto.CreateCallResponseDto;
 import com.capstone.backend.dto.VoiceMessageDto;
+import com.capstone.backend.handler.GpuWebSocketHandler;
 import com.capstone.backend.service.CallService;
 import com.capstone.backend.service.CallSessionService;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class CallController {
 
     private final CallSessionService callSessionService;
     private final CallService callService;
+    private final GpuWebSocketHandler gpuWebSocketHandler;
     /**
      * [POST /api/calls/start]
      * Flutter 앱에서 '통화 시작' 시 호출하는 API입니다.
@@ -38,16 +40,9 @@ public class CallController {
             @RequestBody CreateCallRequestDto requestDto) {
 
         String userPhoneNumber = principal.getName();
-        Long voiceProfileId = requestDto.getVoiceProfileId();
 
         // 1. DB에 세션만 생성 (GPU 매칭 X)
         Long sessionId = callSessionService.createCallSession(userPhoneNumber, requestDto.getVoiceProfileId());
-
-        VoiceMessageDto startMessage = VoiceMessageDto.builder()
-                .type("start")
-                .sessionId(String.valueOf(sessionId))
-                .voiceProfileId(voiceProfileId)
-                .build();
 
         // 2. 생성된 ID 반환 -> 앱은 이걸 받고 WebSocket 연결 시도함
         return ResponseEntity.ok(new CreateCallResponseDto(sessionId));
