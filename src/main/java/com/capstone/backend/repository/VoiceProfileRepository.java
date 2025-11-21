@@ -1,8 +1,10 @@
 package com.capstone.backend.repository;
 
+import com.capstone.backend.entity.User;
 import com.capstone.backend.entity.VoiceProfile;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
+import java.util.Optional;
 
 public interface VoiceProfileRepository extends JpaRepository<VoiceProfile, Long> {
 
@@ -13,4 +15,6 @@ public interface VoiceProfileRepository extends JpaRepository<VoiceProfile, Long
     //    나중에 앱 화면에서 "내 목소리 목록"을 보여줄 때 유용하게 쓰입니다.
     //    SELECT * FROM voice_profile WHERE user_id = ? 와 같은 쿼리가 자동 생성됩니다.
     List<VoiceProfile> findAllByUserId(Long userId);
+
+    Optional<VoiceProfile> findByUserAndProfileName(User user, String profileName);
 }

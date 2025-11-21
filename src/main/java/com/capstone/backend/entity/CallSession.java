@@ -44,7 +44,7 @@ public class CallSession {
     private List<Message> messages = new ArrayList<>();
 
     @Builder
-    public CallSession(User user, String participantName) {
+    public CallSession(User user, VoiceProfile voiceProfile) {
         this.user = user;
         this.voiceProfile = voiceProfile;
     }

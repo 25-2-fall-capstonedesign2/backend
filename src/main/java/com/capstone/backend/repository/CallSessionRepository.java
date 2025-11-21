@@ -13,10 +13,4 @@ import java.util.List;
 public interface CallSessionRepository extends JpaRepository<CallSession, Long>{
     List<CallSession> findAllByUserId(Long userId);
 
-    // [추가] 사용자를 기반으로 중복 제거된 participantName 목록 조회
-    @Query("SELECT DISTINCT c.participantName FROM CallSession c WHERE c.user = :user")
-    List<String> findDistinctParticipantNameByUser(@Param("user") User user);
-
-    // [추가] 사용자와 participantName으로 모든 CallSession 조회
-    List<CallSession> findAllByUserAndParticipantName(User user, String participantName);
 }
