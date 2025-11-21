@@ -28,9 +28,7 @@ public class VoiceProfile {
 
     // [핵심] GPU가 가져갈 실제 이진 데이터 (최대 4GB 지원)
     @Lob
-    // columnDefinition을 제거하고 length를 크게 잡으세요.
-    // Hibernate가 MySQL에서는 LONGBLOB으로, H2에서는 그에 맞는 타입으로 알아서 생성합니다.
-    @Column(name = "voice_data", nullable = false, length = 100000000)
+    @Column(name = "voice_data", nullable = false, columnDefinition = "LONGBLOB")
     private byte[] voiceData;
 
     @CreationTimestamp
