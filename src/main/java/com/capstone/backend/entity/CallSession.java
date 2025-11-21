@@ -25,11 +25,12 @@ public class CallSession {
     // 'CallSession'이 'User' 하나와 관계를 맺습니다 (Many-to-One)
     // FetchType.LAZY는 성능 최적화를 위해 이 엔티티를 조회할 때 User 객체를 바로 로딩하지 않도록 합니다.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false) // FK 컬럼 지정
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "participant_name", nullable = false, length = 100)
-    private String participantName;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "voice_profile_id", nullable = false)
+    private VoiceProfile voiceProfile;
 
     @CreationTimestamp
     @Column(name = "start_time", nullable = false, updatable = false)
@@ -45,7 +46,7 @@ public class CallSession {
     @Builder
     public CallSession(User user, String participantName) {
         this.user = user;
-        this.participantName = participantName;
+        this.voiceProfile = voiceProfile;
     }
 
     // (선택) 통화 종료 시 시간을 업데이트하는 편의 메서드
