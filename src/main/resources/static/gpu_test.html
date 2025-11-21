@@ -1,121 +1,177 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <title>WebSocket Test - GPU WORKER</title>
     <meta charset="UTF-8">
+    <title>AnyCall GPU Server Simulation</title>
+    <style>
+        body { font-family: 'Courier New', monospace; padding: 20px; background-color: #1e1e1e; color: #00ff00; max-width: 1000px; margin: 0 auto; }
+        .panel { border: 1px solid #444; padding: 15px; margin-bottom: 20px; background: #2d2d2d; border-radius: 5px; }
+        h1, h3 { margin-top: 0; color: #fff; }
+        input { background: #333; border: 1px solid #555; color: white; padding: 5px; width: 200px; }
+        button { padding: 8px 15px; background: #444; color: #fff; border: 1px solid #0f0; cursor: pointer; font-family: inherit; margin-right: 5px; }
+        button:hover { background: #555; }
+        #logs { height: 500px; overflow-y: scroll; border: 1px solid #444; padding: 10px; background: #000; }
+
+        .msg-start { color: #ffff00; font-weight: bold; border-bottom: 1px dashed #ffff00; padding-bottom: 2px; }
+        .msg-send { color: #00ffff; }   /* GPU -> Server */
+        .msg-recv { color: #ff00ff; }   /* Server -> GPU */
+        .msg-sys { color: #888; }
+        .binary-data { color: #aaa; font-size: 0.9em; margin-left: 20px; display: block; }
+    </style>
 </head>
 <body>
-<h2>GPU 워커 WebSocket 테스트 (/ws-gpu)</h2>
-<div>
-    <button onclick="connect()">① 연결 (대기 풀 진입)</button>
-    <button onclick="disconnect()">② 연결 종료</button>
+<h1>🖥️ GPU Server Simulator (anycall.store)</h1>
+
+<div class="panel">
+    <h3>1. Connection</h3>
+    <label>Domain:</label> <input type="text" id="domain" value="anycall.store">
+    <button onclick="connect()">🔌 Connect (WSS)</button>
+    <button onclick="disconnect()">❌ Disconnect</button>
+    <span id="status" style="color:red; margin-left:10px;">Disconnected</span>
 </div>
-<hr>
-<div>
-    <h3>전송할 텍스트 내용:</h3>
-    <input type="text" id="textContent" value="안녕하세요, AI입니다." style="width: 300px;">
+
+<div class="panel" id="controlPanel" style="display:none; border-color: #0f0;">
+    <h3>2. Session Control</h3>
+    <div id="sessionInfo" style="margin-bottom: 10px; color: #fff;">대기 중... (Start 신호 대기)</div>
+
+    <button onclick="fetchProfileInfo()">ℹ️ Get Metadata (HTTP GET)</button>
+    <button onclick="downloadVoiceProfile()">📥 Download File (HTTP GET)</button>
+    <hr style="border-color:#444;">
+    <button onclick="sendMockResult()">📤 Send Audio Result (Binary)</button>
 </div>
-<div>
-    <button onclick="sendAudioChunk()">③ (0x01) AI 음성 전송 (고객 전달용)</button>
-    <button onclick="sendUserTranscript()">④ (0x02) 사용자 텍스트 전송 (DB저장용)</button>
-    <button onclick="sendAiTranscript()">⑤ (0x03) AI 텍스트 전송 (DB저장용)</button>
-</div>
-<div>
-    <h3>로그:</h3>
-    <pre id="log"></pre>
-</div>
+
+<div id="logs"></div>
 
 <script>
-    let socket = null;
-    const textEncoder = new TextEncoder(); // 텍스트를 UTF-8 바이트로 변환
+    let ws;
+    let currentVoiceId = null;
+    let currentSessionId = null;
 
-    function log(message) {
-        document.getElementById('log').textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
+    function getWssUrl() {
+        return `wss://${document.getElementById('domain').value}/ws-gpu`;
+    }
+
+    function log(msg, type = 'msg-sys') {
+        const div = document.createElement('div');
+        div.innerHTML = `[${new Date().toLocaleTimeString()}] <span class="${type}">${msg}</span>`;
+        document.getElementById('logs').prepend(div);
+    }
+
+    // 이진 데이터 상세 로깅
+    async function logBinary(blobOrBuffer, direction) {
+        let buffer;
+        let size;
+
+        if (blobOrBuffer instanceof Blob) {
+            size = blobOrBuffer.size;
+            buffer = await blobOrBuffer.arrayBuffer();
+        } else {
+            size = blobOrBuffer.byteLength;
+            buffer = blobOrBuffer;
+        }
+
+        const view = new Uint8Array(buffer);
+        // 앞 16바이트 Hex 변환
+        const preview = Array.from(view.subarray(0, 16))
+            .map(b => b.toString(16).padStart(2, '0').toUpperCase())
+            .join(' ');
+
+        const arrow = direction === 'SENT' ? '⬆️' : '⬇️';
+        const typeClass = direction === 'SENT' ? 'msg-send' : 'msg-recv';
+
+        log(`${arrow} [Binary] Size: ${size} bytes <span class="binary-data">Hex: ${preview} ...</span>`, typeClass);
+        console.log(`[${direction}] Full Data:`, view);
     }
 
     function connect() {
-        if (socket) return;
-        // (참고) /ws-gpu 엔드포인트는 GpuWebSocketHandler가 처리합니다.
-        const url = `ws://${window.location.host}/ws-gpu`;
-        socket = new WebSocket(url);
-        socket.binaryType = 'arraybuffer'; // 수신 타입을 ArrayBuffer로
-        log(`🔌 연결 시도: ${url}`);
+        const url = getWssUrl();
+        log(`Connecting to ${url}...`);
+        ws = new WebSocket(url);
 
-        socket.onopen = (event) => log('✅ WebSocket 연결 성공 (GPU 워커)');
+        ws.onopen = () => {
+            document.getElementById('status').textContent = "Connected";
+            document.getElementById('status').style.color = "#0f0";
+            document.getElementById('controlPanel').style.display = "block";
+            log("✅ WebSocket Connected", 'msg-sys');
+        };
 
-        socket.onmessage = (event) => {
-            // CallService가 고객의 '순수 음성' 데이터를 그대로 전달합니다.
-            if (event.data instanceof ArrayBuffer) {
-                const view = new Uint8Array(event.data);
-                log(`📨 (고객->GPU) '순수 음성' 수신: ${view.length} bytes (헤더 없음)`);
-                log(`   ㄴ 데이터 샘플: [${Array.from(view.slice(0, 10)).join(', ')}]`);
+        ws.onmessage = (event) => {
+            // 1. 텍스트 메시지 (JSON 명령어)
+            try {
+                // JSON 파싱 시도
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'start') {
+                    handleStartSignal(msg);
+                } else {
+                    log(`📩 [JSON] ${JSON.stringify(msg)}`, 'msg-recv');
+                }
+            } catch (e) {
+                // 2. 바이너리 메시지 (오디오 데이터)
+                // WebSocket은 기본적으로 Blob으로 올 수 있음
+                if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
+                    logBinary(event.data, 'RECV');
+                } else {
+                    log(`📩 [Unknown] ${event.data}`, 'msg-recv');
+                }
             }
         };
 
-        socket.onerror = (error) => log('❌ 에러 발생: ' + JSON.stringify(error));
-        socket.onclose = (event) => {
-            log(`🔌 연결 종료: ${event.code} - ${event.reason}`);
-            socket = null;
+        ws.onclose = () => {
+            document.getElementById('status').textContent = "Disconnected";
+            document.getElementById('status').style.color = "red";
+            log("❌ Disconnected", 'msg-sys');
         };
     }
 
     function disconnect() {
-        if (socket) {
-            socket.close(1000, "Worker disconnected");
-            socket = null;
+        if (ws) ws.close();
+    }
+
+    function handleStartSignal(msg) {
+        currentVoiceId = msg.voiceProfileId;
+        currentSessionId = msg.sessionId;
+
+        log(`🚀 START Signal Received!`, 'msg-start');
+        log(`   SessionID: ${currentSessionId}`);
+        log(`   VoiceProfileID: ${currentVoiceId}`);
+
+        document.getElementById('sessionInfo').innerHTML =
+            `Current Session: <b style="color:#ff0">${currentSessionId}</b> <br> Voice Profile ID: <b style="color:#ff0">${currentVoiceId}</b>`;
+    }
+
+    // HTTP API 호출 (HTTPS 사용)
+    async function fetchProfileInfo() {
+        if (!currentVoiceId) return alert("Start 신호를 먼저 받아야 합니다.");
+        const domain = document.getElementById('domain').value;
+        const url = `https://${domain}/api/voice-profiles/${currentVoiceId}`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            log(`ℹ️ Metadata: ${JSON.stringify(data)}`, 'msg-sys');
+        } catch (e) {
+            log(`Error: ${e}`, 'msg-sys');
         }
     }
 
-    // 1바이트 헤더와 데이터 본문을 합치는 헬퍼 함수
-    function createMessage(headerByte, dataBytes) {
-        const header = new Uint8Array([headerByte]);
-        const combined = new Uint8Array(header.length + dataBytes.length);
-        combined.set(header, 0);
-        combined.set(dataBytes, header.length);
-        return combined;
+    function downloadVoiceProfile() {
+        if (!currentVoiceId) return alert("Start 신호를 먼저 받아야 합니다.");
+        const domain = document.getElementById('domain').value;
+        const url = `https://${domain}/api/voice-profiles/${currentVoiceId}/download`;
+
+        log(`📥 Opening Download: ${url}`, 'msg-sys');
+        window.open(url, '_blank');
     }
 
-    // ③ (0x01) AI 음성 전송
-    function sendAudioChunk() {
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-            log('⚠️ 먼저 연결하세요');
-            return;
-        }
-        // 1023바이트 랜덤 오디오 데이터 생성
-        const audioData = new Uint8Array(1023);
-        for (let i = 0; i < audioData.length; i++) audioData[i] = Math.floor(Math.random() * 256);
+    function sendMockResult() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return alert("Not connected");
 
-        const message = createMessage(0x01, audioData);
-        socket.send(message.buffer);
-        log(`📤 (GPU->서버) 0x01: AI 음성 데이터 전송 (${message.length} bytes)`);
-    }
+        // 더미 오디오 결과 생성 (예: 2KB)
+        const buffer = new Uint8Array(2048);
+        for(let i=0; i<buffer.length; i++) buffer[i] = i % 255; // 패턴 데이터
 
-    // ④ (0x02) 사용자 텍스트 전송
-    function sendUserTranscript() {
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-            log('⚠️ 먼저 연결하세요');
-            return;
-        }
-        const text = document.getElementById('textContent').value + " (USER)";
-        const textData = textEncoder.encode(text); // 텍스트를 UTF-8 바이트로
-
-        const message = createMessage(0x02, textData);
-        socket.send(message.buffer);
-        log(`📤 (GPU->서버) 0x02: 사용자 텍스트 전송: "${text}"`);
-    }
-
-    // ⑤ (0x03) AI 텍스트 전송
-    function sendAiTranscript() {
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-            log('⚠️ 먼저 연결하세요');
-            return;
-        }
-        const text = document.getElementById('textContent').value + " (AI)";
-        const textData = textEncoder.encode(text); // 텍스트를 UTF-8 바이트로
-
-        const message = createMessage(0x03, textData);
-        socket.send(message.buffer);
-        log(`📤 (GPU->서버) 0x03: AI 텍스트 전송: "${text}"`);
+        ws.send(buffer);
+        logBinary(buffer, 'SENT');
     }
 </script>
 </body>

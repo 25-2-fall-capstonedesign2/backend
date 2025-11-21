@@ -1,156 +1,253 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <title>WebSocket Test - CUSTOMER (API 연동)</title>
     <meta charset="UTF-8">
+    <title>AnyCall Customer Test (App Simulation)</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+        .section { border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
+        h3 { margin-top: 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select, button { margin-bottom: 10px; width: 100%; padding: 8px; box-sizing: border-box; }
+        button { cursor: pointer; background-color: #007bff; color: white; border: none; font-weight: bold; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; }
+        button.danger { background-color: #dc3545; }
+        button.danger:hover { background-color: #a71d2a; }
+        #logs { background: #f0f0f0; height: 400px; overflow-y: scroll; padding: 10px; border: 1px solid #ccc; font-family: monospace; font-size: 12px; }
+        .log-sent { color: blue; }
+        .log-recv { color: green; }
+        .log-err { color: red; font-weight: bold; }
+        .log-info { color: #555; }
+        .binary-preview { font-size: 11px; color: #666; margin-left: 10px; }
+    </style>
 </head>
 <body>
-<h2>고객(Client) WebSocket 테스트 (API 연동)</h2>
+<h2>📱 AnyCall Customer Test (anycall.store)</h2>
 
-<div>
-    <label for="jwtToken">JWT 토큰:</label>
-    <input type="text" id="jwtToken" value="여기에_로그인_후_받은_JWT_토큰을_붙여넣으세요" style="width: 400px;">
+<div class="section">
+    <h3>1. 인증 & 서버 설정</h3>
+    <label>Target Domain:</label>
+    <input type="text" id="serverDomain" value="anycall.store">
+    <label>User ID:</label>
+    <input type="text" id="userId" value="1">
+    <label>JWT Token (Bearer 제외):</label>
+    <input type="text" id="jwtToken" placeholder="토큰 입력">
 </div>
-<div>
-    <label for="participantName">통화 대상:</label>
-    <input type="text" id="participantName" value="AI-John" style="width: 150px;">
+
+<div class="section">
+    <h3>2. 통화 준비</h3>
+    <button onclick="loadVoiceProfiles()">목소리 목록 불러오기 (GET)</button>
+    <select id="voiceProfileSelect"><option value="">목록을 불러오세요</option></select>
 </div>
-<hr>
-<div>
-    <button onclick="startCall()">① 통화 시작 (API + WS)</button>
-    <button onclick="hangupCall()">② 통화 종료 (API + WS)</button>
-    <button onclick="sendAudioData()">③ '순수 음성' 데이터 전송 (헤더 없음)</button>
+
+<div class="section">
+    <h3>3. 통화 제어</h3>
+    <div style="display: flex; gap: 10px;">
+        <button id="btnStartCall" onclick="startCall()">📞 통화 시작 (Start)</button>
+        <button id="btnHangup" class="danger" onclick="hangupCall()" disabled>❌ 통화 종료 (Hangup)</button>
+    </div>
+    <p>Status: <span id="status" style="font-weight:bold;">대기 중</span></p>
 </div>
-<div>
-    <h3>로그:</h3>
-    <pre id="log"></pre>
+
+<div class="section">
+    <h3>4. 오디오 시뮬레이션</h3>
+    <button id="btnMic" onclick="toggleMic()" disabled>🎙️ 마이크 켜기 (Dummy Data 전송)</button>
+    <div id="audioStatus">마이크 꺼짐</div>
+</div>
+
+<div class="section">
+    <h3>Logs (Binary Detail)</h3>
+    <div id="logs"></div>
 </div>
 
 <script>
-    let socket = null;
+    let websocket = null;
     let currentSessionId = null;
-    let currentToken = null;
+    let isMicOn = false;
+    let micInterval = null;
 
-    function log(message) {
-        document.getElementById('log').textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
+    const logDiv = document.getElementById('logs');
+    const statusSpan = document.getElementById('status');
+
+    function getBaseUrl() {
+        return `https://${document.getElementById('serverDomain').value}`;
     }
 
-    // 1. '통화 시작' - participantName을 JSON으로 전송
+    function getWsUrl() {
+        return `wss://${document.getElementById('serverDomain').value}`;
+    }
+
+    function log(msg, type = 'log-info') {
+        const p = document.createElement('div');
+        p.innerHTML = `[${new Date().toLocaleTimeString()}] <span class="${type}">${msg}</span>`;
+        logDiv.prepend(p);
+    }
+
+    // 이진 데이터 상세 로깅 함수
+    function logBinary(data, direction) {
+        let byteLength = 0;
+        let preview = "";
+        let view = null;
+
+        if (data instanceof ArrayBuffer) {
+            byteLength = data.byteLength;
+            view = new Uint8Array(data);
+        } else if (data instanceof Blob) {
+            byteLength = data.size;
+            // Blob은 비동기로 읽어야 하므로 여기서는 사이즈만 표시하고 별도 처리 필요할 수 있음
+            // 편의상 ArrayBuffer 변환 후 로깅 권장
+        } else if (data instanceof Uint8Array) {
+            byteLength = data.byteLength;
+            view = data;
+        }
+
+        // 앞 16바이트만 Hex로 변환하여 미리보기
+        if (view) {
+            const subarray = view.subarray(0, Math.min(view.length, 16));
+            preview = Array.from(subarray).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+            if (view.length > 16) preview += " ...";
+        }
+
+        const arrow = direction === 'SENT' ? '⬆️' : '⬇️';
+        const colorClass = direction === 'SENT' ? 'log-sent' : 'log-recv';
+
+        log(`${arrow} [Binary] Size: ${byteLength} bytes <br><span class="binary-preview">Hex: ${preview}</span>`, colorClass);
+
+        // 전체 데이터는 개발자 도구 콘솔에서 확인 가능하도록 출력
+        console.log(`[${direction}] Full Binary Data:`, data);
+    }
+
+    async function loadVoiceProfiles() {
+        const userId = document.getElementById('userId').value;
+        try {
+            const response = await fetch(`${getBaseUrl()}/api/voice-profiles/user/${userId}`);
+            if (!response.ok) throw new Error('Load Failed');
+            const profiles = await response.json();
+
+            const select = document.getElementById('voiceProfileSelect');
+            select.innerHTML = '';
+            profiles.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = `${p.profileName} (ID: ${p.id})`;
+                select.appendChild(opt);
+            });
+            log(`목록 로드 완료: ${profiles.length}개`);
+        } catch (e) {
+            log(`에러: ${e.message}`, 'log-err');
+        }
+    }
+
     async function startCall() {
-        if (socket) {
-            log('⚠️ 이미 통화가 연결되어 있습니다.');
-            return;
-        }
-
-        currentToken = document.getElementById('jwtToken').value;
-        const participantName = document.getElementById('participantName').value;
-
-        if (!currentToken || currentToken.includes("붙여넣으세요")) {
-            log('❌ JWT 토큰을 입력하세요.');
-            return;
-        }
-        if (!participantName) {
-            log('❌ 통화 대상을 입력하세요.');
-            return;
-        }
+        const token = document.getElementById('jwtToken').value;
+        const profileId = document.getElementById('voiceProfileSelect').value;
+        if (!profileId) return alert("프로필 선택 필요");
 
         try {
-            log('📞 [API] /api/calls/start 호출 시도...');
-            log(`   ㄴ Body: {"participantName": "${participantName}"}`);
-
-            // 1-1. REST API 호출 (JSON Body 추가)
-            const response = await fetch('/api/calls/start', {
+            log("통화 시작 요청 (API)...");
+            const response = await fetch(`${getBaseUrl()}/api/calls/start`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${currentToken}`,
-                    'Content-Type': 'application/json' // JSON 전송 명시
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ // 우리가 수정한 DTO에 맞게 JSON 전송
-                    participantName: participantName
-                })
+                body: JSON.stringify({ voiceProfileId: Number(profileId) })
             });
 
-            if (!response.ok) {
-                throw new Error(`API 호출 실패: ${response.status}`);
-            }
-
+            if (!response.ok) throw new Error(`API Error: ${response.status}`);
             const data = await response.json();
             currentSessionId = data.callSessionId;
 
-            log(`✅ [API] 세션 ID 발급 성공: ${currentSessionId}`);
-
-            // 1-2. 발급받은 ID로 WebSocket 연결
-            connectToWebSocket(currentSessionId);
-
-        } catch (error) {
-            log(`❌ [API] 통화 시작 실패: ${error.message}`);
+            connectWebSocket(currentSessionId);
+        } catch (e) {
+            log(`시작 실패: ${e.message}`, 'log-err');
         }
     }
 
-    // 2. WebSocket 연결 로직
-    function connectToWebSocket(sessionId) {
-        // (참고) /ws-client 엔드포인트는 ClientWebSocketHandler가 처리합니다.
-        const url = `ws://${window.location.host}/ws-client?sessionId=${sessionId}`;
-        socket = new WebSocket(url);
-        socket.binaryType = 'arraybuffer'; // 수신 타입을 ArrayBuffer로
-        log(`🔌 [WS] 연결 시도: ${url}`);
+    function connectWebSocket(sessionId) {
+        const wsUrl = `${getWsUrl()}/ws-client?callSessionId=${sessionId}`;
+        log(`WS 연결 시도: ${wsUrl}`);
 
-        socket.onopen = (event) => log('✅ [WS] WebSocket 연결 성공 (고객)');
+        websocket = new WebSocket(wsUrl);
+        websocket.binaryType = 'arraybuffer'; // 이진 데이터 타입 설정
 
-        socket.onmessage = (event) => {
-            // 서버(GpuWebSocketHandler)가 0x01(오디오)만 필터링해서 보냅니다.
+        websocket.onopen = () => {
+            log("✅ WebSocket Connected", 'log-recv');
+            statusSpan.textContent = "연결됨";
+            statusSpan.style.color = "green";
+            document.getElementById('btnStartCall').disabled = true;
+            document.getElementById('btnHangup').disabled = false;
+            document.getElementById('btnMic').disabled = false;
+        };
+
+        websocket.onmessage = (event) => {
             if (event.data instanceof ArrayBuffer) {
-                const view = new Uint8Array(event.data);
-                log(`📨 [WS] (GPU->고객) 'AI 음성' 수신 (0x01 타입 추정): ${view.length} bytes`);
-                log(`   ㄴ 데이터 샘플: [${Array.from(view.slice(0, 10)).join(', ')}]`);
+                logBinary(event.data, 'RECV');
             } else {
-                log(`📨 [WS] (서버->고객) 텍스트 메시지 수신: ${event.data}`);
+                log(`[Msg] ${event.data}`, 'log-recv');
             }
         };
 
-        socket.onerror = (error) => log('❌ [WS] 에러 발생: ' + JSON.stringify(error));
-        socket.onclose = (event) => {
-            log(`🔌 [WS] 연결 종료: ${event.code} - ${event.reason}`);
-            socket = null;
-            currentSessionId = null;
+        websocket.onclose = (e) => {
+            log(`❌ WebSocket Closed (Code: ${e.code})`, 'log-err');
+            resetUI();
         };
     }
 
-    // 3. '통화 종료'
     async function hangupCall() {
-        if (!socket || !currentSessionId) {
-            log('⚠️ 연결된 통화가 없습니다.');
-            return;
-        }
+        if (!currentSessionId) return;
+        const token = document.getElementById('jwtToken').value;
         try {
-            log(`📞 [API] /api/calls/${currentSessionId}/hangup 호출 시도...`);
-            const response = await fetch(`/api/calls/${currentSessionId}/hangup`, {
+            await fetch(`${getBaseUrl()}/api/calls/${currentSessionId}/hangup`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${currentToken}` }
+                headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (!response.ok) throw new Error(`API 호출 실패: ${response.status}`);
-            log('✅ [API] 통화 종료 요청 성공');
-        } catch (error) {
-            log(`❌ [API] 통화 종료 실패: ${error.message}`);
-        } finally {
-            if (socket) socket.close(1000, "User ended call");
-            socket = null;
-            currentSessionId = null;
+            log("통화 종료 요청 전송");
+        } catch(e) {
+            log("종료 요청 실패", 'log-err');
         }
+        if (websocket) websocket.close();
     }
 
-    // 4. '순수 음성' 데이터 전송
-    function sendAudioData() {
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-            log('⚠️ 먼저 통화를 시작하세요');
-            return;
-        }
-        // 프로토콜 약속: 고객은 헤더 없는 '순수 음성' 데이터만 보냅니다.
-        const data = new Uint8Array(1024);
-        for (let i = 0; i < data.length; i++) data[i] = i % 256;
+    function resetUI() {
+        statusSpan.textContent = "종료됨";
+        statusSpan.style.color = "black";
+        document.getElementById('btnStartCall').disabled = false;
+        document.getElementById('btnHangup').disabled = true;
+        document.getElementById('btnMic').disabled = true;
+        stopMic();
+    }
 
-        socket.send(data.buffer);
-        log(`📤 [WS] (고객->GPU) '순수 음성' 데이터 전송: ${data.length} bytes (헤더 없음)`);
+    function toggleMic() {
+        if (isMicOn) stopMic();
+        else startMic();
+    }
+
+    function startMic() {
+        isMicOn = true;
+        document.getElementById('btnMic').textContent = "⏹️ 마이크 끄기";
+        document.getElementById('audioStatus').textContent = "전송 중... (1초 간격)";
+
+        // 더미 오디오 데이터 생성 (1024 바이트)
+        // 실제로는 마이크 스트림을 받아와야 합니다.
+        micInterval = setInterval(() => {
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                // 테스트를 위해 랜덤 데이터 채움
+                const buffer = new Uint8Array(1024);
+                for(let i=0; i<10; i++) buffer[i] = Math.floor(Math.random() * 255);
+
+                websocket.send(buffer);
+                logBinary(buffer, 'SENT');
+            }
+        }, 1000);
+    }
+
+    function stopMic() {
+        isMicOn = false;
+        document.getElementById('btnMic').textContent = "🎙️ 마이크 켜기";
+        document.getElementById('audioStatus').textContent = "마이크 꺼짐";
+        if (micInterval) clearInterval(micInterval);
     }
 </script>
 </body>
