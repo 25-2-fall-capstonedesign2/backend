@@ -80,4 +80,11 @@ public class CallSessionService {
                 .map(session -> session.getVoiceProfile().getId())
                 .orElseThrow(() -> new EntityNotFoundException("Session not found"));
     }
+
+    @Transactional(readOnly = true)
+    public Long getUserId(Long callSessionId) {
+        return callSessionRepository.findById(callSessionId)
+                .map(session -> session.getUser().getId()) // User 엔티티를 거쳐 ID 조회
+                .orElseThrow(() -> new EntityNotFoundException("Session not found"));
+    }
 }
