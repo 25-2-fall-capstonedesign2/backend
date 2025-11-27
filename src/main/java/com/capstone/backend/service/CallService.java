@@ -88,11 +88,14 @@ public class CallService {
         // [DB 조회] 해당 통화가 어떤 목소리인지 가져옴
         Long voiceProfileId = callSessionService.getVoiceProfileId(callSessionId);
 
+        Long userId = callSessionService.getUserId(callSessionId);
+
         // [전송] GPU에게 "시작해" 메시지 (JSON)
         VoiceMessageDto startMsg = VoiceMessageDto.builder()
                 .type("start")
                 .sessionId(String.valueOf(callSessionId))
                 .voiceProfileId(voiceProfileId)
+                .userId(userId)
                 .build();
 
         sendJsonToGpu(gpu, startMsg);
