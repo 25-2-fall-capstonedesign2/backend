@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc // MockMvc를 주입받아 사용하기 위한 어노테이션
 @Transactional // 각 테스트 케이스 실행 후 DB 상태를 롤백하여 독립성 보장
 class BackendApplicationTests {
