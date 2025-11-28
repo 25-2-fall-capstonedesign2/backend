@@ -113,6 +113,9 @@ public class CallService {
             WebSocketSession gpu = activePairs.get(callSessionId);
             if (gpu != null && gpu.isOpen()) {
                 try {
+                    int payloadSize = message.getPayloadLength();
+                    log.info("Audio Packet: Client -> GPU (Size: {} bytes)", payloadSize);
+
                     gpu.sendMessage(message);
                 } catch (IOException e) {
                     log.error("Failed to forward audio to GPU", e);
