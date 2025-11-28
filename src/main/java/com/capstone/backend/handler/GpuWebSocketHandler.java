@@ -39,6 +39,7 @@ public class GpuWebSocketHandler extends BinaryWebSocketHandler {
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
         ByteBuffer payload = message.getPayload();
+        int totalSize = payload.remaining();
 
         // 페이로드가 비어있거나 헤더조차 없으면 무시
         if (payload.remaining() < 1) {
@@ -48,6 +49,10 @@ public class GpuWebSocketHandler extends BinaryWebSocketHandler {
 
         // 첫 1바이트를 읽어 메시지 타입을 확인
         byte messageType = payload.get(); // 첫 바이트(header)를 읽음
+
+        log.info("Received from GPU: Type=0x{}, Size={} bytes",
+                Integer.toHexString(messageType & 0xFF).toUpperCase(),
+                totalSize);
 
         // 실제 데이터 추출 (헤더를 제외한 나머지 바이트)
         byte[] dataBytes = new byte[payload.remaining()];

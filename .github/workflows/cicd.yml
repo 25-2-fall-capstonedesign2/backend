@@ -8,8 +8,8 @@ name: Anycall Backend CI/CD
 # 워크플로우가 언제 실행될지를 정의합니다.
 on:
   # 'main' 또는 'develop' 브랜치로 push 이벤트가 발생했을 때
-  push:
-    branches: [ "main", "develop" ]
+  #push:
+  #  branches: [ "develop" ]
   # 'main' 브랜치로 pull request가 생성되었을 때 (CI만 실행)
   pull_request:
     branches: [ "main" ]
