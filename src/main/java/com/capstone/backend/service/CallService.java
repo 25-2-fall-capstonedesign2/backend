@@ -129,6 +129,9 @@ public class CallService {
         WebSocketSession client = gpuSessionToClient.get(gpuSession.getId());
         if (client != null && client.isOpen()) {
             try {
+                int size = message.getPayloadLength();
+                log.info("Relay to Client: Size={} bytes (SessionID={})", size, client.getId());
+
                 client.sendMessage(message);
             } catch (IOException e) {
                 log.error("Failed to forward audio to Client", e);
