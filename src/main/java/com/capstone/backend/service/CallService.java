@@ -11,6 +11,7 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -221,6 +222,35 @@ public class CallService {
                 } catch (IOException e) {
                     log.error("Error closing active client", e);
                 }
+            }
+        }
+    }
+
+    public void notifyClientGpuIsReady(Long callSessionId) {
+        WebSocketSession gpuSession = activePairs.get(callSessionId);
+        if (gpuSession == null) {
+            log.warn("GPU session not found for CallID: {}", callSessionId);
+            return;
+        }
+        WebSocketSession clientSession = gpuSessionToClient.get(gpuSession.getId());
+
+        if (clientSession != null && clientSession.isOpen()) {
+            try {
+                // 2. 심플한 JSON 생성 (type: system, event: ready)
+                // Jackson 라이브러리(ObjectMapper) 사용 가정
+                Map<String, String> signal = new HashMap<>();
+                signal.put("type", "system");
+                signal.put("event", "ready");
+
+                String jsonMessage = new ObjectMapper().writeValueAsString(signal);
+
+                // 3. 클라이언트에게 전송
+                clientSession.sendMessage(new TextMessage(jsonMessage));
+
+                log.info("Sent READY signal (type=system, event=ready) to client: {}", callSessionId);
+
+            } catch (IOException e) {
+                log.error("Failed to send ready signal", e);
             }
         }
     }

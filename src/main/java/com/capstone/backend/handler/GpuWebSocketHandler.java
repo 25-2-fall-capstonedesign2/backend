@@ -81,6 +81,15 @@ public class GpuWebSocketHandler extends BinaryWebSocketHandler {
                 messageService.saveMessage(callSessionId, "AI", aiText);
                 break;
 
+            case 0x04: // 약속된 헤더값 (예: 0x04)
+                String signal = new String(dataBytes, StandardCharsets.UTF_8);
+                if ("ready".equalsIgnoreCase(signal.trim())) {
+                    log.info("GPU is ready for CallSessionId: {}", callSessionId);
+                    // 클라이언트에게 준비 완료 신호 전송
+                    callService.notifyClientGpuIsReady(callSessionId);
+                }
+                break;
+
             default:
                 log.warn("Unknown binary message type received: {} from GPU: {}", messageType, session.getId());
         }

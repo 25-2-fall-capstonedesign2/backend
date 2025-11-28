@@ -60,4 +60,15 @@ public class ClientWebSocketHandler extends BinaryWebSocketHandler {
         }
         return null;
     }
+    /*
+    @Override
+    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
+        // [방어 로직] GPU가 준비되지 않았다면 오디오 패킷 무시
+        if (!callService.isGpuReady(session)) {
+            log.warn("Ignored audio packet: GPU is not ready yet.");
+            return;
+        }
+
+        callService.forwardAudioToGpu(session, message);
+    }*/
 }
