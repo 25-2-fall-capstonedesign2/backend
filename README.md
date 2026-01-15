@@ -13,10 +13,10 @@
 
 <br>
 
-> **"그리운 목소리와 다시 한번."**
-> <br>
-> **Anycall**은 디지털 소외 계층인 시니어를 위해 가장 익숙한 인터페이스인 '전화'를 통해 AI와 소통할 수 있도록 돕는 서비스입니다.
-> <br>본 프로젝트는 서비스의 핵심인 **실시간 음성/텍스트 데이터 중계** 및 **대규모 사용자 세션 관리**를 담당하는 백엔드 서버입니다.
+ **"그리운 목소리와 다시 한번."**
+ <br>
+ **Anycall**은 디지털 소외 계층인 시니어를 위해 가장 익숙한 인터페이스인 '전화'를 통해 AI와 소통할 수 있도록 돕는 서비스입니다.
+ <br>본 프로젝트는 서비스의 핵심인 **실시간 음성/텍스트 데이터 중계** 및 **대규모 사용자 세션 관리**를 담당하는 백엔드 서버입니다.
 
 </div>
 
@@ -36,8 +36,6 @@
 <br>
 
 ##  Architecture
-
-**Anycall Backend**는 MSA(Microservices Architecture) 환경에서 프론트엔드와 AI GPU 워커 사이의 **Hub** 역할을 수행하며, **초저지연(Ultra-low Latency)** 통신을 보장합니다.
 
 ```mermaid
 graph TD
@@ -70,7 +68,7 @@ graph TD
 > * **Raw WebSocket Handler**를 직접 구현하여 프로토콜 오버헤드를 최소화.
 > * 텍스트와 오디오 데이터를 단일 채널에서 효율적으로 처리하기 위해 **Custom Binary Protocol** 설계 및 적용.
 
-### 2. User-Worker 동적 매핑 (Dynamic Mapping)
+### 2. User-GPU Worker 동적 매핑
 > **Problem**
 > * 다수의 사용자가 동시에 통화를 시도할 때, 한정된 고비용 자원인 GPU 워커를 효율적으로 배분해야 함.
 
@@ -117,11 +115,11 @@ graph TD
 데이터 무결성과 보안을 최우선으로 고려하여 정규화된 스키마를 설계했습니다.
 
 * **`Users`**: 사용자 인증 및 기본 정보 관리
-* **`Voice_Profile`**: Voice Cloning을 위한 가족 목소리 데이터 (BLOB) 및 메타데이터
-* **`Call_Session`**: 통화 시작/종료 시간 및 매핑된 프로필 정보
+* **`Voice_Profile`**: Voice Cloning을 위한 통화 대상 목소리 데이터 및 메타데이터
+* **`Call_Session`**: 통화 시작/종료 시간 및 유저-GPU worker 매핑된 프로필 정보
 * **`Message`**: 통화 중 발생한 대화 로그 저장 (Timestamp 포함)
 
->  **Security Note**: AWS RDS는 외부 접근이 차단된 Private Network에 배치되었으며, 오직 **Bastion Host**를 통한 SSH Tunneling으로만 접근 가능합니다.
+> **AWS RDS는 외부 접근이 차단된 Private Network에 배치되었으며, 오직 **Bastion Host**를 통한 SSH Tunneling으로만 접근 가능합니다.**
 
 <br>
 
@@ -143,14 +141,14 @@ graph TD
 
 ##  Testing & Simulation
 
-모바일 클라이언트나 AI 모델 없이도 서버 로직을 검증할 수 있는 **자체 시뮬레이터**를 개발하여 테스트를 수행했습니다.
+모바일 클라이언트나 AI 모델 없이도 서버 로직을 검증할 수 있는 **자체 시뮬레이션**를 개발하여 테스트를 수행했습니다.
 
 * **Unit Test**: `JUnit 5` & `Mockito` 기반 비즈니스 로직 검증
 * **Load Simulation**: HTML/JS 기반의 가상 클라이언트 및 워커 시뮬레이터
 
 <div align="center">
-  <img src="./images/user_test.png" width="45%" alt="User Client Simulator" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-  <img src="./images/gpu_test.png" width="45%" alt="GPU Worker Simulator" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+  <img src="https://github.com/user-attachments/assets/300e7a8d-471c-453e-8b02-1a8bd78b1194" width="45%" />
+  <img src="https://github.com/user-attachments/assets/9a3f9ea0-3dea-4a59-80b0-c3c17395b803" width="45%" />
   <p align="center" style="color: gray; font-size: 0.9rem;"><i>Left: User Client Simulator / Right: GPU Worker Simulator</i></p>
 </div>
 
