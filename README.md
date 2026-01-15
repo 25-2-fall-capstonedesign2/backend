@@ -15,7 +15,7 @@
 
  **"그리운 목소리와 다시 한번."**
  <br>
- **Anycall**은 디지털 소외 계층인 시니어를 위해 가장 익숙한 인터페이스인 '전화'를 통해 AI와 소통할 수 있도록 돕는 서비스입니다.
+ **Anycall**은 디지털 소외 계층인 시니어를 위해 가장 익숙한 인터페이스인 '전화'를 통해 AI와 소통할 수 있도록 돕는 앱입니다.
  <br>본 프로젝트는 서비스의 핵심인 **실시간 음성/텍스트 데이터 중계** 및 **대규모 사용자 세션 관리**를 담당하는 백엔드 서버입니다.
 
 </div>
@@ -24,9 +24,9 @@
 <br>
 
 <div align="center">
-  <h3> Project Demo Video</h3>
-  <a href="https://youtube.com/shorts/aUoYMTZrhEI">
-    <img src="https://img.youtube.com/vi/aUoYMTZrhEI/0.jpg" alt="Project Demo" width="80%" />
+  <h3>Project Demo Video</h3>
+  <a href="https://youtube.com/shorts/aUoYMTZrhEI">
+  데모 영상
   </a>
 </div>
 
